@@ -1,0 +1,26 @@
+services:
+  present:
+    # Built and published by GitHub Actions on every merge to main
+    # (.github/workflows/docker-image.yml). To build from this checkout instead:
+    #   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+    image: ghcr.io/jray222/present:latest
+    pull_policy: always
+    container_name: present
+    ports:
+      - "5732:5732"
+    environment:
+      APP_ENV: development
+      FRONTEND_ORIGIN: http://localhost:5732
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:5732}
+      TZ: ${TZ:-America/Indiana/Indianapolis}
+      ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      # Optional:
+      # GOOGLE_CLIENT_ID: ...
+      # GOOGLE_CLIENT_SECRET: ...
+      # SECRET_KEY: set one here, or let Present generate and persist it in the volume.
+    volumes:
+      - present-data:/app/backend/data
+    restart: unless-stopped
+
+volumes:
+  present-data:

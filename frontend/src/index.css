@@ -1,0 +1,89 @@
+@import '@fontsource-variable/nunito';
+@import '@fontsource-variable/nunito-sans';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --cream: 255 248 238;
+  --surface: 255 255 255;
+  --sunk: 253 240 224;
+  --ink: 52 36 26;
+  --muted: 120 99 83;
+  --line: 239 224 205;
+}
+
+html.dark {
+  color-scheme: dark;
+  --cream: 26 22 20;
+  --surface: 40 34 31;
+  --sunk: 54 47 43;
+  --ink: 252 244 234;
+  --muted: 190 174 158;
+  --line: 72 63 57;
+}
+
+@layer base {
+  body {
+    margin: 0;
+    @apply bg-cream text-ink font-sans antialiased selection:bg-tomato-200;
+  }
+  h1, h2, h3, h4 {
+    @apply font-display font-extrabold tracking-tight;
+  }
+  :where(button, a, select, summary, [role='tab'], [tabindex]):focus-visible,
+  :where(input, textarea):focus-visible {
+    outline: 3px solid rgb(217 67 44 / 0.7);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* Staple Card Aesthetics */
+  .card { @apply bg-surface rounded-3xl shadow-soft border border-line/70 transition; }
+  .card-pad { @apply p-5 sm:p-6; }
+
+  /* Buttons */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-bold
+      transition active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none cursor-pointer select-none;
+  }
+  .btn-primary { @apply btn bg-tomato-600 text-white shadow-pop hover:bg-tomato-700; }
+  .btn-pine { @apply btn bg-pine-700 text-white shadow-pine hover:bg-pine-800; }
+  .btn-soft { @apply btn bg-sunk text-ink hover:bg-line/60; }
+  .btn-ghost { @apply btn text-muted hover:bg-sunk hover:text-ink; }
+  .btn-danger { @apply btn bg-tomato-50 text-tomato-700 hover:bg-tomato-100 dark:bg-tomato-900/40 dark:text-tomato-200; }
+  .btn-icon { @apply inline-flex items-center justify-center w-10 h-10 rounded-full transition cursor-pointer active:scale-95; }
+
+  /* Form Fields */
+  .input {
+    @apply w-full bg-surface text-ink placeholder:text-muted/60 border-2 border-line rounded-2xl px-4 py-2.5
+      transition focus:border-tomato-500 focus:outline-none;
+  }
+  .label { @apply block text-xs font-bold text-muted mb-1.5 uppercase tracking-wide; }
+
+  /* Chips */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-bold bg-sunk text-muted
+      transition cursor-pointer select-none whitespace-nowrap;
+  }
+  .chip-on { @apply bg-tomato-600 text-white shadow-sm; }
+  .chip-pine { @apply bg-pine-100 text-pine-800 dark:bg-pine-900/50 dark:text-pine-200; }
+  .chip-sunny { @apply bg-sunny-100 text-sunny-700 dark:bg-sunny-600/20 dark:text-sunny-300; }
+  .chip-frost { @apply bg-frost-100 text-frost-800 dark:bg-frost-900/50 dark:text-frost-200; }
+
+  /* Banners */
+  .banner-warn { @apply flex items-start gap-2.5 rounded-2xl bg-sunny-50 text-sunny-700 p-3.5 text-sm dark:bg-sunny-600/15 dark:text-sunny-200; }
+  .banner-ok { @apply flex items-start gap-2.5 rounded-2xl bg-pine-50 text-pine-800 p-3.5 text-sm dark:bg-pine-900/40 dark:text-pine-100; }
+  .banner-error { @apply flex items-start gap-2.5 rounded-2xl bg-tomato-50 text-tomato-800 p-3.5 text-sm dark:bg-tomato-900/40 dark:text-tomato-100; }
+}
+
+@media (max-width: 1023px) {
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
