@@ -1,22 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
+import pyotp
 from app.database import get_db
-from app.models import User, RefreshToken, BackupCode
-from app.schemas import RegisterRequest, LoginRequest, TokenResponse, UserOut, TwoFactorVerifyRequest
+from app.models import User, RefreshToken, BackupCode, FamilyGroup, GroupMember
+from app.schemas import (
+    RegisterRequest, LoginRequest, TokenResponse, TwoFactorVerifyRequest, UserOut,
+    ChangePasswordRequest
+)
 from app.security import (
     hash_password, verify_password, create_access_token,
     generate_refresh_token, hash_token, decrypt_secret
 )
 from app.deps import get_current_user, get_client_ip
 from app.config import settings
-import pyotp
+from app.services.rate_limiter import rate_limit
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 def _user_to_out(user: User) -> UserOut:
     is_google = bool(user.google_sub)
-    # If not a Google OAuth user, 2FA is required for security!
-    requires_2fa = not is_google and not user.totp_enabled
+    requires_2fa = not is_google and not user.totp_enabled and len(user.passkeys) == 0
 
     return UserOut(
         id=user.id,
@@ -64,7 +67,11 @@ def _issue_tokens(user: User, db: Session, response: Response, request: Request)
         user=_user_to_out(user),
     )
 
-@router.post("/register", response_model=TokenResponse)
+@router.post(
+    "/register",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_REGISTER_PER_MINUTE, 60, "register"))]
+)
 def register(payload: RegisterRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     if not settings.ALLOW_REGISTRATION:
         count = db.query(User).count()
@@ -94,9 +101,20 @@ def register(payload: RegisterRequest, response: Response, request: Request, db:
     db.commit()
     db.refresh(user)
 
+    # If invite/group code was provided, join group
+    if payload.group_code:
+        group = db.query(FamilyGroup).filter(FamilyGroup.invite_code == payload.group_code.strip()).first()
+        if group:
+            db.add(GroupMember(group_id=group.id, user_id=user.id, role="member"))
+            db.commit()
+
     return _issue_tokens(user, db, response, request)
 
-@router.post("/login", response_model=TokenResponse)
+@router.post(
+    "/login",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_LOGIN_PER_MINUTE, 60, "login"))]
+)
 def login(payload: LoginRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == payload.username.strip().lower()).first()
     if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
@@ -112,7 +130,11 @@ def login(payload: LoginRequest, response: Response, request: Request, db: Sessi
 
     return _issue_tokens(user, db, response, request)
 
-@router.post("/verify-2fa", response_model=TokenResponse)
+@router.post(
+    "/verify-2fa",
+    response_model=TokenResponse,
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_2FA_PER_MINUTE, 60, "verify-2fa"))]
+)
 def verify_2fa(payload: TwoFactorVerifyRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     from app.security import decode_token
     token_data = decode_token(payload.temp_token)
@@ -138,6 +160,7 @@ def verify_2fa(payload: TwoFactorVerifyRequest, response: Response, request: Req
         BackupCode.code_hash == code_hash,
         BackupCode.used == False,
     ).first()
+
     if backup:
         backup.used = True
         from datetime import datetime, timezone
@@ -183,6 +206,47 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     response.delete_cookie(key="present_refresh_token", path="/")
     return {"status": "logged_out"}
 
+@router.post("/logout-other-devices")
+def logout_other_devices(
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    current_token = request.cookies.get("present_refresh_token")
+    current_hash = hash_token(current_token) if current_token else None
+
+    query = db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False
+    )
+    if current_hash:
+        query = query.filter(RefreshToken.token_hash != current_hash)
+
+    revoked_count = query.update({"revoked": True})
+    db.commit()
+    return {"status": "logged_out_others", "revoked_sessions": revoked_count}
+
 @router.get("/me", response_model=UserOut)
 def get_me(user: User = Depends(get_current_user)):
     return _user_to_out(user)
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if user.password_hash:
+        if not verify_password(payload.current_password, user.password_hash):
+            raise HTTPException(status_code=400, detail="Current password incorrect.")
+    elif not user.google_sub:
+        raise HTTPException(status_code=400, detail="Cannot change password for this account.")
+
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
+
+    from datetime import datetime, timezone
+    user.password_hash = hash_password(payload.new_password)
+    user.password_changed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "password_changed"}

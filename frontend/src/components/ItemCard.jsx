@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Check, Heart, ExternalLink, Trash2, Pencil, Lock, AlertCircle, ShoppingCart, CheckSquare, Square } from 'lucide-react';
+import React from 'react';
+import { Check, ExternalLink, Trash2, Pencil, Lock, CheckSquare, Square } from 'lucide-react';
 import ProductImage from './ProductImage';
 
 export default function ItemCard({
@@ -49,7 +49,7 @@ export default function ItemCard({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onToggleSelect && onToggleSelect(item.id);
+              if (onToggleSelect) onToggleSelect(item.id);
             }}
             className={`absolute top-3 left-3 z-10 p-1.5 rounded-xl transition ${
               isSelected
@@ -130,8 +130,8 @@ export default function ItemCard({
                 onClick={(e) => {
                   if (selectionMode) {
                     e.stopPropagation();
-                  } else {
-                    onExternalLinkClick && onExternalLinkClick(item);
+                  } else if (onExternalLinkClick) {
+                    onExternalLinkClick(item);
                   }
                 }}
                 className="btn-soft text-xs py-1.5 px-3 flex items-center gap-1 font-bold text-tomato-600 dark:text-tomato-400"
@@ -173,21 +173,41 @@ export default function ItemCard({
           ) : (
             <div className="flex items-center gap-1.5">
               {myClaim ? (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs font-extrabold text-pine-700 bg-pine-100 dark:bg-pine-950/60 px-2 py-1 rounded-xl">
-                    {myClaim.status === 'purchased' ? '✓ You bought this' : '🎁 You reserved this'}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRelease(item.id);
-                    }}
-                    className="text-xs text-muted hover:text-tomato-600 font-bold px-1.5 py-1"
-                    title="Release your claim"
-                  >
-                    Release
-                  </button>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-extrabold text-pine-700 bg-pine-100 dark:bg-pine-950/60 px-2 py-1 rounded-xl">
+                      {myClaim.status === 'purchased' ? '✓ You bought this' : '🎁 You reserved this'}
+                    </span>
+                    {myClaim.status === 'reserved' && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onClaim) onClaim(item.id, 'purchased');
+                        }}
+                        className="text-xs text-pine-700 dark:text-pine-300 font-bold px-1.5 py-1 hover:underline"
+                        title="Mark as purchased"
+                      >
+                        Bought it?
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRelease(item.id);
+                      }}
+                      className="text-xs text-muted hover:text-tomato-600 font-bold px-1.5 py-1"
+                      title="Release your claim"
+                    >
+                      Release
+                    </button>
+                  </div>
+                  {myClaim.needs_purchase_reminder && (
+                    <span className="text-[11px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 px-2 py-0.5 rounded-lg border border-amber-200 dark:border-amber-800">
+                      ⚠️ Reserved 7+ days ago — have you purchased this yet?
+                    </span>
+                  )}
                 </div>
               ) : otherClaim ? (
                 <span className="text-xs font-bold text-muted flex items-center gap-1">

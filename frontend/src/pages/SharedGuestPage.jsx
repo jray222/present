@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Heart, Lock, Check, ExternalLink, User, ShoppingBag } from 'lucide-react';
+import { Lock, ExternalLink, User } from 'lucide-react';
 import { getSharedWishlist, claimItem, releaseClaim } from '../api';
 import { Spinner, ErrorBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
@@ -19,20 +19,25 @@ export default function SharedGuestPage({ token }) {
   const [outboundItem, setOutboundItem] = useState(null);
   const [promptOpen, setPromptOpen] = useState(false);
 
-  const loadList = async () => {
-    try {
-      setLoading(true);
-      const data = await getSharedWishlist(token);
-      setWishlist(data);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadList();
+    let active = true;
+    (async () => {
+      try {
+        const data = await getSharedWishlist(token);
+        if (active) {
+          setWishlist(data);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   useEffect(() => {

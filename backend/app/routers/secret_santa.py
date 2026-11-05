@@ -8,6 +8,7 @@ from app.models import FamilyGroup, GroupMember, SecretSantaDraw, SecretSantaPai
 from app.deps import get_current_user
 from app.services.secret_santa import solve_secret_santa
 from app.config import settings
+from app.services.rate_limiter import rate_limit
 
 router = APIRouter(prefix="/secret-santa", tags=["secret-santa"])
 
@@ -118,7 +119,10 @@ def create_and_run_draw(payload: CreateDrawRequest, user: User = Depends(get_cur
         for p in created_pairs
     ]
 
-@router.get("/reveal/{token}")
+@router.get(
+    "/reveal/{token}",
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_SANTA_REVEAL_PER_MINUTE, 60, "santa-reveal"))]
+)
 def reveal_secret_santa(token: str, db: Session = Depends(get_db)):
     pair = db.query(SecretSantaPair).filter(SecretSantaPair.view_token == token).first()
     if not pair:

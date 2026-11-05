@@ -7,10 +7,16 @@ from app.models import ItemClaim, WishlistItem, User
 from app.schemas import ClaimActionRequest, WishlistItemOut, BatchClaimRequest, BatchClaimResponse
 from app.deps import get_current_user, get_current_user_optional
 from app.routers.wishlists import _format_item_for_viewer
+from app.config import settings
+from app.services.rate_limiter import rate_limit
 
 router = APIRouter(prefix="/claims", tags=["claims"])
 
-@router.post("/items/{item_id}", response_model=WishlistItemOut)
+@router.post(
+    "/items/{item_id}",
+    response_model=WishlistItemOut,
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_GUEST_CLAIMS_PER_MINUTE, 60, "claims"))]
+)
 def claim_or_update_item(
     item_id: int,
     payload: ClaimActionRequest,
@@ -69,7 +75,11 @@ def claim_or_update_item(
     db.refresh(item)
     return _format_item_for_viewer(item, user)
 
-@router.post("/batch", response_model=BatchClaimResponse)
+@router.post(
+    "/batch",
+    response_model=BatchClaimResponse,
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_GUEST_CLAIMS_PER_MINUTE, 60, "claims"))]
+)
 def batch_claim_items(
     payload: BatchClaimRequest,
     user: Optional[User] = Depends(get_current_user_optional),

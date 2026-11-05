@@ -9,6 +9,8 @@ const api = axios.create({
 let accessToken = null;
 let onAuthExpiredHandler = null;
 
+export const getAccessToken = () => accessToken;
+
 export const setAccessToken = (token) => {
   accessToken = token;
   if (token) {
@@ -116,3 +118,29 @@ export const getPasskeys = async () => (await api.get('/settings/passkeys')).dat
 export const deletePasskey = async (id) => (await api.delete(`/settings/passkeys/${id}`)).data;
 export const getSystemSettings = async () => (await api.get('/settings/system')).data;
 export const updateSystemSettings = async (data) => (await api.post('/settings/system', data)).data;
+export const reorderItems = async (wishlistId, itemIds) =>
+  (await api.post(`/wishlists/${wishlistId}/reorder`, { item_ids: itemIds })).data;
+export const logoutOtherDevices = async () =>
+  (await api.post('/auth/logout-other-devices')).data;
+export const changePassword = async (currentPassword, newPassword) =>
+  (await api.post('/auth/change-password', { current_password: currentPassword, new_password: newPassword })).data;
+export const adminResetUserPassword = async (userId, newPassword) =>
+  (await api.post(`/settings/users/${userId}/reset-password`, { new_password: newPassword })).data;
+export const downloadDatabaseBackup = async () => {
+  const response = await api.get('/settings/backup', { responseType: 'blob' });
+  const blob = new Blob([response.data], { type: 'application/x-sqlite3' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const disposition = response.headers && response.headers['content-disposition'];
+  let filename = 'present_backup.db';
+  if (disposition) {
+    const match = disposition.match(/filename="?([^";]+)"?/);
+    if (match && match[1]) filename = match[1];
+  }
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};

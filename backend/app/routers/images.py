@@ -1,6 +1,8 @@
 from fastapi import APIRouter, HTTPException, Query, Response
-import httpx
-from urllib.parse import urlparse
+from app.services.safe_http import safe_fetch_url, SSRFError, ResponseTooLargeError, MAX_IMAGE_BYTES
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/images", tags=["images"])
 
@@ -18,36 +20,53 @@ async def proxy_image(url: str = Query(..., description="External image URL to p
     if not clean_url or not clean_url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Invalid image URL.")
 
-    # Always upgrade http to https where possible
-    if clean_url.startswith("http://"):
-        clean_url = "https://" + clean_url[7:]
-
-    parsed = urlparse(clean_url)
-    if not parsed.netloc:
-        raise HTTPException(status_code=400, detail="Invalid host.")
+    # Try https upgrade first
+    target_url = clean_url
+    if target_url.startswith("http://"):
+        target_url = "https://" + target_url[7:]
 
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers=IMAGE_HEADERS) as client:
-            resp = await client.get(clean_url)
-            if resp.status_code != 200:
-                # If https failed and original was http, try original
-                if clean_url != url:
-                    resp = await client.get(url)
-
-            if resp.status_code != 200:
-                raise HTTPException(status_code=resp.status_code, detail="Failed to fetch image.")
-
-            content_type = resp.headers.get("content-type", "image/jpeg")
-            if not content_type.startswith("image/"):
-                content_type = "image/jpeg"
-
-            return Response(
-                content=resp.content,
-                media_type=content_type,
-                headers={
-                    "Cache-Control": "public, max-age=604800, immutable",
-                    "Access-Control-Allow-Origin": "*",
-                },
+        try:
+            status_code, content, headers, _ = await safe_fetch_url(
+                target_url,
+                headers=IMAGE_HEADERS,
+                max_bytes=MAX_IMAGE_BYTES,
+                timeout=10.0,
             )
+        except (SSRFError, ResponseTooLargeError):
+            raise
+        except Exception:
+            # Fall back to original URL if https upgrade failed
+            if target_url != clean_url:
+                status_code, content, headers, _ = await safe_fetch_url(
+                    clean_url,
+                    headers=IMAGE_HEADERS,
+                    max_bytes=MAX_IMAGE_BYTES,
+                    timeout=10.0,
+                )
+            else:
+                raise
+
+        if status_code != 200:
+            raise HTTPException(status_code=status_code, detail="Failed to fetch image.")
+
+        content_type = headers.get("content-type", "image/jpeg")
+        if not content_type.startswith("image/"):
+            content_type = "image/jpeg"
+
+        return Response(
+            content=content,
+            media_type=content_type,
+            headers={
+                "Cache-Control": "public, max-age=604800, immutable",
+                "Access-Control-Allow-Origin": "*",
+            },
+        )
+    except (SSRFError, ResponseTooLargeError) as e:
+        logger.warning("Blocked unsafe image proxy request for '%s': %s", clean_url, e)
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error("Image proxy error for '%s': %s", clean_url, e)
         raise HTTPException(status_code=502, detail=f"Image proxy error: {str(e)}")

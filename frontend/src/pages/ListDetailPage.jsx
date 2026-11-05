@@ -1,23 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Plus, LayoutGrid, List as ListIcon, Share2, Sparkles, ArrowLeft,
-  ExternalLink, Check, ShoppingCart, HelpCircle, Loader2, Pencil, Trash2,
-  CheckSquare, Square, CheckCheck, X
+  Plus, LayoutGrid, List as ListIcon, Share2, ArrowLeft,
+  Pencil, CheckSquare, ArrowUp, ArrowDown
 } from 'lucide-react';
 import {
   getWishlist, updateWishlist, deleteWishlist, addItem, updateItem, deleteItem,
-  claimItem, releaseClaim, scrapeUrl, createShareToken
+  claimItem, releaseClaim, reorderItems
 } from '../api';
-import { PageHeader, Spinner, ErrorBanner, SuccessBanner } from '../components/ui';
-import Modal, { Field } from '../components/Modal';
+import { Spinner, ErrorBanner } from '../components/ui';
 import ItemCard from '../components/ItemCard';
 import ItemRow from '../components/ItemRow';
 import ShareModal from '../components/ShareModal';
+import ItemFormModal from '../components/list/ItemFormModal';
+import SelectionToolbar from '../components/list/SelectionToolbar';
+import ReturnPromptModal from '../components/list/ReturnPromptModal';
+import EditListModal from '../components/list/EditListModal';
 import { navigate } from '../lib/router';
-import { useAuth } from '../context/AuthContext';
 
 export default function ListDetailPage({ wishlistId }) {
-  const { user } = useAuth();
   const [wishlist, setWishlist] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -27,23 +27,10 @@ export default function ListDetailPage({ wishlistId }) {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState([]);
 
-  // Edit List Modal
+  // Modals
   const [editListOpen, setEditListOpen] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
-  const [editOccasion, setEditOccasion] = useState('');
-  const [editDescription, setEditDescription] = useState('');
-
-  // Add / Edit Item Modal
   const [itemModalOpen, setItemModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [itemTitle, setItemTitle] = useState('');
-  const [itemUrl, setItemUrl] = useState('');
-  const [itemPrice, setItemPrice] = useState('');
-  const [itemDescription, setItemDescription] = useState('');
-  const [itemImageUrl, setItemImageUrl] = useState('');
-  const [itemPriority, setItemPriority] = useState(1);
-  const [scraping, setScraping] = useState(false);
-  const [scrapeSuccess, setScrapeSuccess] = useState(null);
 
   // Link Return Prompt ("Did you buy this?")
   const [activeOutboundItem, setActiveOutboundItem] = useState(null);
@@ -51,102 +38,44 @@ export default function ListDetailPage({ wishlistId }) {
 
   // Share Modal
   const [shareOpen, setShareOpen] = useState(false);
-  const [shareUrl, setShareUrl] = useState('');
   const [sharePreSelectedIds, setSharePreSelectedIds] = useState([]);
 
-  const loadList = async () => {
-    try {
-      setLoading(true);
-      const data = await getWishlist(wishlistId);
-      setWishlist(data);
-      if (data.view_mode) setViewMode(data.view_mode);
-      setEditTitle(data.title);
-      setEditOccasion(data.occasion || 'Christmas');
-      setEditDescription(data.description || '');
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadList();
+    let active = true;
+    (async () => {
+      try {
+        const data = await getWishlist(wishlistId);
+        if (active) {
+          setWishlist(data);
+          setViewMode(data.view_mode || 'grid');
+          setLoading(false);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [wishlistId]);
 
-  // Window Focus listener for "Did you buy this?" prompt
+  // Window Focus Event Listener for Link Return Prompt
   useEffect(() => {
-    const handleWindowFocus = () => {
+    const handleFocus = () => {
       if (activeOutboundItem) {
         setDidYouBuyPromptOpen(true);
       }
     };
-    window.addEventListener('focus', handleWindowFocus);
-    return () => window.removeEventListener('focus', handleWindowFocus);
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, [activeOutboundItem]);
 
-  const handleExternalLinkClick = (item) => {
-    setActiveOutboundItem(item);
-  };
-
-  // Selection helpers
-  const handleToggleSelect = (id) => {
-    if (selectedItemIds.includes(id)) {
-      setSelectedItemIds(selectedItemIds.filter((x) => x !== id));
-    } else {
-      setSelectedItemIds([...selectedItemIds, id]);
-    }
-  };
-
-  const handleSelectAll = () => {
-    if (wishlist?.items) {
-      setSelectedItemIds(wishlist.items.map((i) => i.id));
-    }
-  };
-
-  const handleDeselectAll = () => {
-    setSelectedItemIds([]);
-  };
-
-  const openShareWithSelection = () => {
-    setSharePreSelectedIds(selectedItemIds);
-    setShareOpen(true);
-  };
-
-  const openShare = () => {
-    setSharePreSelectedIds(selectedItemIds.length > 0 ? selectedItemIds : []);
-    setShareOpen(true);
-  };
-
-  const handleAutoScrape = async (overrideUrl = null) => {
-    const urlToScrape = (overrideUrl || itemUrl).trim();
-    if (!urlToScrape || (!urlToScrape.startsWith('http://') && !urlToScrape.startsWith('https://'))) return;
+  const handleSaveListMeta = async (updatedData) => {
     try {
-      setScraping(true);
-      setScrapeSuccess(null);
-      const data = await scrapeUrl(urlToScrape);
-      if (data.clean_url) setItemUrl(data.clean_url);
-      if (data.title) setItemTitle(data.title);
-      if (data.image_url) setItemImageUrl(data.image_url);
-      if (data.price !== null && data.price !== undefined) setItemPrice(data.price.toString());
-      if (data.description) setItemDescription(data.description);
-      setScrapeSuccess(`Autofilled from ${data.vendor || 'store'}!`);
-    } catch (err) {
-      console.warn('Scraping error:', err);
-    } finally {
-      setScraping(false);
-    }
-  };
-
-  const handleSaveEditList = async (e) => {
-    e.preventDefault();
-    if (!editTitle.trim()) return;
-    try {
-      const updated = await updateWishlist(wishlistId, {
-        title: editTitle.trim(),
-        occasion: editOccasion,
-        description: editDescription.trim() || null,
-      });
+      const updated = await updateWishlist(wishlistId, updatedData);
       setWishlist({ ...wishlist, ...updated });
       setEditListOpen(false);
     } catch (err) {
@@ -164,18 +93,7 @@ export default function ListDetailPage({ wishlistId }) {
     }
   };
 
-  const handleSaveItem = async (e) => {
-    e.preventDefault();
-    if (!itemTitle.trim()) return;
-    const payload = {
-      title: itemTitle.trim(),
-      url: itemUrl.trim() || null,
-      price: itemPrice ? parseFloat(itemPrice) : null,
-      description: itemDescription.trim() || null,
-      image_url: itemImageUrl.trim() || null,
-      priority: parseInt(itemPriority, 10),
-    };
-
+  const handleSaveItem = async (payload) => {
     try {
       if (editingItem) {
         const updated = await updateItem(editingItem.id, payload);
@@ -191,7 +109,7 @@ export default function ListDetailPage({ wishlistId }) {
         });
       }
       setItemModalOpen(false);
-      resetItemForm();
+      setEditingItem(null);
     } catch (err) {
       setError(err);
     }
@@ -235,36 +153,43 @@ export default function ListDetailPage({ wishlistId }) {
     }
   };
 
-  const handleItemsReservedFromModal = (updatedItems) => {
-    if (!updatedItems || updatedItems.length === 0) return;
-    const map = new Map(updatedItems.map((i) => [i.id, i]));
+  const handleMoveItem = async (itemId, direction) => {
+    const items = [...wishlist.items];
+    const index = items.findIndex((i) => i.id === itemId);
+    if (index === -1) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const [moved] = items.splice(index, 1);
+    items.splice(targetIndex, 0, moved);
+
+    // Optimistic UI update
+    setWishlist({ ...wishlist, items });
+
+    try {
+      await reorderItems(wishlistId, items.map((i) => i.id));
+    } catch (err) {
+      setError(err);
+    }
+  };
+
+  const handleItemsReservedFromModal = (updatedItemIds) => {
+    if (!updatedItemIds || updatedItemIds.length === 0) return;
+    const reservedSet = new Set(updatedItemIds);
     setWishlist((prev) => ({
       ...prev,
-      items: prev.items.map((item) => (map.has(item.id) ? map.get(item.id) : item)),
+      items: prev.items.map((item) =>
+        reservedSet.has(item.id)
+          ? { ...item, is_claimed: true, claim_status: 'reserved' }
+          : item
+      ),
     }));
   };
 
-  const resetItemForm = () => {
-    setEditingItem(null);
-    setItemTitle('');
-    setItemUrl('');
-    setItemPrice('');
-    setItemDescription('');
-    setItemImageUrl('');
-    setItemPriority(1);
-    setScrapeSuccess(null);
-  };
-
-  const startEdit = (item) => {
-    setEditingItem(item);
-    setItemTitle(item.title);
-    setItemUrl(item.url || '');
-    setItemPrice(item.price ? item.price.toString() : '');
-    setItemDescription(item.description || '');
-    setItemImageUrl(item.image_url || '');
-    setItemPriority(item.priority || 1);
-    setScrapeSuccess(null);
-    setItemModalOpen(true);
+  const toggleSelect = (id) => {
+    setSelectedItemIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
   if (loading) {
@@ -320,7 +245,7 @@ export default function ListDetailPage({ wishlistId }) {
             <button
               type="button"
               onClick={() => setViewMode('compact')}
-              title="Compact Detail List View"
+              title="Compact Detail View"
               className={`btn-icon w-8 h-8 ${
                 viewMode === 'compact'
                   ? 'bg-surface text-ink shadow-sm'
@@ -331,48 +256,79 @@ export default function ListDetailPage({ wishlistId }) {
             </button>
           </div>
 
-          {/* Select Items Toggle Button */}
-          {wishlist.items.length > 0 && (
+          {/* Multi-Select Toggle */}
+          {wishlist.items?.length > 0 && (
             <button
               type="button"
               onClick={() => {
-                const nextMode = !selectionMode;
-                setSelectionMode(nextMode);
-                if (!nextMode) setSelectedItemIds([]);
+                setSelectionMode(!selectionMode);
+                setSelectedItemIds([]);
               }}
-              className={`text-xs py-2 px-3 flex items-center gap-1.5 font-bold rounded-2xl transition ${
-                selectionMode
-                  ? 'bg-tomato-600 text-white shadow-soft'
-                  : 'btn-soft'
+              className={`btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold ${
+                selectionMode ? 'bg-tomato-100 dark:bg-tomato-950/40 text-tomato-700' : ''
               }`}
             >
-              <CheckSquare className="w-3.5 h-3.5" />
+              <CheckSquare className="w-4 h-4" />
               <span>{selectionMode ? 'Done Selecting' : 'Select Items'}</span>
-              {selectedItemIds.length > 0 && (
-                <span className="ml-1 px-1.5 py-0.2 rounded-full bg-white text-tomato-700 text-[10px] font-black">
-                  {selectedItemIds.length}
-                </span>
-              )}
             </button>
           )}
 
-          {/* Share Button */}
+          {/* Primary Share Modal Trigger */}
           <button
             type="button"
-            onClick={openShare}
-            className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
+            onClick={() => {
+              setSharePreSelectedIds([]);
+              setShareOpen(true);
+            }}
+            className="btn-primary text-xs py-2 px-3.5 shadow-pop flex items-center gap-1.5 font-extrabold"
           >
             <Share2 className="w-4 h-4" />
-            <span>Share</span>
+            <span>Share List</span>
           </button>
+        </div>
+      </div>
+
+      <ErrorBanner error={error} />
+
+      {/* Header Card */}
+      <div className="card card-pad relative overflow-hidden bg-gradient-to-br from-surface via-surface to-sunk/40">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <span className="text-4xl sm:text-5xl shrink-0 p-3 bg-sunk rounded-3xl border border-line">
+              {wishlist.icon || '🎁'}
+            </span>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="font-display font-black text-2xl sm:text-3xl text-ink">
+                  {wishlist.title}
+                </h1>
+                <span className="chip chip-sunny text-xs font-bold">
+                  {wishlist.occasion || 'Christmas'}
+                </span>
+                {wishlist.is_archived && (
+                  <span className="chip text-xs font-bold bg-sunk text-muted">
+                    Archived
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-muted mt-1 font-semibold">
+                Wishlist for <strong className="text-ink">{ownerDisplayName}</strong>
+                {wishlist.items?.length > 0 ? ` • ${wishlist.items.length} gift ideas` : ''}
+              </p>
+              {wishlist.description && (
+                <p className="text-xs text-muted/90 mt-2 max-w-xl leading-relaxed">
+                  {wishlist.description}
+                </p>
+              )}
+            </div>
+          </div>
 
           {isOwner && (
-            <>
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={() => setEditListOpen(true)}
-                title="Edit wishlist name"
-                className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
+                className="btn-soft text-xs py-2 px-3 font-bold flex items-center gap-1.5"
               >
                 <Pencil className="w-3.5 h-3.5" />
                 <span>Edit List</span>
@@ -380,397 +336,181 @@ export default function ListDetailPage({ wishlistId }) {
               <button
                 type="button"
                 onClick={() => {
-                  resetItemForm();
+                  setEditingItem(null);
                   setItemModalOpen(true);
                 }}
-                className="btn-primary text-xs py-2 px-3.5 flex items-center gap-1.5"
+                className="btn-primary text-xs py-2 px-3.5 font-extrabold flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Gift</span>
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
 
-      <ErrorBanner error={error} />
-
-      {/* List Header */}
-      <div className="card card-pad bg-gradient-to-r from-surface to-sunk/40 border-line">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-2xl">{wishlist.icon || '🎁'}</span>
-              <span className="chip chip-sunny text-xs">{wishlist.occasion || 'Holiday'}</span>
-              {wishlist.managed_profile_name && (
-                <span className="chip chip-pine text-xs">Child: {wishlist.managed_profile_name}</span>
-              )}
-            </div>
-            <h1 className="font-display font-extrabold text-2xl sm:text-3xl text-ink">
-              {wishlist.title}
-            </h1>
-            <p className="text-sm text-muted mt-1">
-              By <span className="font-bold text-ink">{ownerDisplayName}</span> • {wishlist.items.length} items
-            </p>
-            {wishlist.description && (
-              <p className="text-sm text-ink/80 mt-2 max-w-xl">{wishlist.description}</p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Items Section */}
-      {wishlist.items.length === 0 ? (
-        <div className="card p-12 text-center space-y-3">
-          <div className="text-4xl">✨</div>
-          <h3 className="font-display font-extrabold text-xl">This wishlist is empty!</h3>
+      {/* Items List / Grid */}
+      {wishlist.items?.length === 0 ? (
+        <div className="card p-12 text-center space-y-4">
+          <div className="text-5xl">✨</div>
+          <h3 className="font-display font-extrabold text-2xl text-ink">This wishlist is empty</h3>
           <p className="text-sm text-muted max-w-md mx-auto">
             {isOwner
-              ? 'Add some ideas, paste a link from Amazon or Target, or write down things you love.'
-              : 'The list owner hasn’t added any items yet.'}
+              ? 'Add your first gift idea by pasting a link from Amazon, Target, or any store!'
+              : `${ownerDisplayName} hasn't added any items yet. Check back soon!`}
           </p>
           {isOwner && (
             <button
               type="button"
               onClick={() => {
-                resetItemForm();
+                setEditingItem(null);
                 setItemModalOpen(true);
               }}
               className="btn-primary mx-auto"
             >
               <Plus className="w-4 h-4" />
-              <span>Add First Item</span>
+              <span>Add First Gift</span>
             </button>
           )}
         </div>
       ) : viewMode === 'grid' ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {wishlist.items.map((item) => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              isOwner={isOwner}
-              onEdit={startEdit}
-              onDelete={handleDeleteItem}
-              onClaim={handleClaim}
-              onRelease={handleRelease}
-              onExternalLinkClick={handleExternalLinkClick}
-              selectionMode={selectionMode}
-              isSelected={selectedItemIds.includes(item.id)}
-              onToggleSelect={handleToggleSelect}
-            />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          {wishlist.items.map((item, idx) => (
+            <div key={item.id} className="relative group/reorder">
+              <ItemCard
+                item={item}
+                isOwner={isOwner}
+                onEdit={() => {
+                  setEditingItem(item);
+                  setItemModalOpen(true);
+                }}
+                onDelete={() => handleDeleteItem(item.id)}
+                onClaim={(status) => handleClaim(item.id, status)}
+                onRelease={() => handleRelease(item.id)}
+                onExternalLinkClick={(clickedItem) => setActiveOutboundItem(clickedItem)}
+                selectionMode={selectionMode}
+                isSelected={selectedItemIds.includes(item.id)}
+                onToggleSelect={toggleSelect}
+              />
+              {isOwner && !selectionMode && (
+                <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover/reorder:opacity-100 transition bg-surface/90 backdrop-blur rounded-lg shadow-soft p-0.5 z-10">
+                  <button
+                    type="button"
+                    disabled={idx === 0}
+                    onClick={() => handleMoveItem(item.id, 'up')}
+                    className="p-1 hover:bg-sunk rounded text-muted hover:text-ink disabled:opacity-30"
+                    title="Move up"
+                  >
+                    <ArrowUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={idx === wishlist.items.length - 1}
+                    onClick={() => handleMoveItem(item.id, 'down')}
+                    className="p-1 hover:bg-sunk rounded text-muted hover:text-ink disabled:opacity-30"
+                    title="Move down"
+                  >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       ) : (
-        <div className="space-y-2.5">
-          {wishlist.items.map((item) => (
-            <ItemRow
-              key={item.id}
-              item={item}
-              isOwner={isOwner}
-              onEdit={startEdit}
-              onDelete={handleDeleteItem}
-              onClaim={handleClaim}
-              onRelease={handleRelease}
-              onExternalLinkClick={handleExternalLinkClick}
-              selectionMode={selectionMode}
-              isSelected={selectedItemIds.includes(item.id)}
-              onToggleSelect={handleToggleSelect}
-            />
+        <div className="space-y-3">
+          {wishlist.items.map((item, idx) => (
+            <div key={item.id} className="relative group/reorder">
+              <ItemRow
+                item={item}
+                isOwner={isOwner}
+                onEdit={() => {
+                  setEditingItem(item);
+                  setItemModalOpen(true);
+                }}
+                onDelete={() => handleDeleteItem(item.id)}
+                onClaim={(status) => handleClaim(item.id, status)}
+                onRelease={() => handleRelease(item.id)}
+                onExternalLinkClick={(clickedItem) => setActiveOutboundItem(clickedItem)}
+                selectionMode={selectionMode}
+                isSelected={selectedItemIds.includes(item.id)}
+                onToggleSelect={toggleSelect}
+              />
+              {isOwner && !selectionMode && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 group-hover/reorder:opacity-100 transition bg-surface/90 backdrop-blur rounded-lg shadow-soft p-0.5">
+                  <button
+                    type="button"
+                    disabled={idx === 0}
+                    onClick={() => handleMoveItem(item.id, 'up')}
+                    className="p-1 hover:bg-sunk rounded text-muted hover:text-ink disabled:opacity-30"
+                    title="Move up"
+                  >
+                    <ArrowUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={idx === wishlist.items.length - 1}
+                    onClick={() => handleMoveItem(item.id, 'down')}
+                    className="p-1 hover:bg-sunk rounded text-muted hover:text-ink disabled:opacity-30"
+                    title="Move down"
+                  >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
 
-      {/* Floating Selection Dock */}
+      {/* Floating Selection Action Toolbar */}
       {selectionMode && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-surface/95 backdrop-blur-md border border-line shadow-lift rounded-3xl p-3 sm:px-5 flex items-center gap-3 sm:gap-4 max-w-xl w-[92%] sm:w-auto">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-tomato-500 animate-pulse" />
-            <span className="font-extrabold text-xs sm:text-sm text-ink whitespace-nowrap">
-              {selectedItemIds.length} gift{selectedItemIds.length !== 1 ? 's' : ''} selected
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5 border-l border-line pl-3">
-            <button
-              type="button"
-              onClick={handleSelectAll}
-              className="text-xs font-bold text-tomato-600 hover:underline px-1 py-0.5"
-            >
-              Select All
-            </button>
-            <span className="text-muted text-xs">•</span>
-            <button
-              type="button"
-              onClick={handleDeselectAll}
-              className="text-xs font-bold text-muted hover:text-ink px-1 py-0.5"
-            >
-              Clear
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2 ml-auto">
-            <button
-              type="button"
-              disabled={selectedItemIds.length === 0}
-              onClick={openShareWithSelection}
-              className="btn-primary text-xs py-2 px-3.5 shadow-soft font-extrabold flex items-center gap-1.5"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-              <span>Share Selected</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setSelectionMode(false);
-                setSelectedItemIds([]);
-              }}
-              className="btn-icon w-8 h-8 text-muted hover:text-ink hover:bg-sunk"
-              title="Close selection"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        <SelectionToolbar
+          selectedCount={selectedItemIds.length}
+          totalCount={wishlist.items?.length || 0}
+          onSelectAll={() => setSelectedItemIds(wishlist.items.map((i) => i.id))}
+          onClear={() => setSelectedItemIds([])}
+          onShareSelected={() => {
+            setSharePreSelectedIds(selectedItemIds);
+            setShareOpen(true);
+          }}
+          onExit={() => {
+            setSelectionMode(false);
+            setSelectedItemIds([]);
+          }}
+        />
       )}
 
-      {/* Modal: Edit List */}
-      <Modal open={editListOpen} onClose={() => setEditListOpen(false)} title="Edit Wishlist Details">
-        <form onSubmit={handleSaveEditList} className="space-y-4">
-          <Field label="Wishlist Title" htmlFor="edit-w-title">
-            <input
-              id="edit-w-title"
-              type="text"
-              required
-              value={editTitle}
-              onChange={(e) => setEditTitle(e.target.value)}
-              className="input font-semibold"
-            />
-          </Field>
-          <Field label="Occasion" htmlFor="edit-w-occ">
-            <select
-              id="edit-w-occ"
-              value={editOccasion}
-              onChange={(e) => setEditOccasion(e.target.value)}
-              className="input font-semibold"
-            >
-              <option value="Christmas">🎄 Christmas / Holiday</option>
-              <option value="Birthday">🎂 Birthday</option>
-              <option value="General">🎁 General Wishlist</option>
-              <option value="Baby">👶 Baby / Kids</option>
-              <option value="Wedding">💍 Wedding / Anniversary</option>
-            </select>
-          </Field>
-          <Field label="Description / Notes" htmlFor="edit-w-desc">
-            <textarea
-              id="edit-w-desc"
-              rows={3}
-              value={editDescription}
-              onChange={(e) => setEditDescription(e.target.value)}
-              placeholder="Size preferences, favorite colors, etc."
-              className="input text-sm"
-            />
-          </Field>
-          <div className="flex gap-2 pt-2">
-            <button type="submit" className="btn-primary flex-1 py-3">
-              Save Changes
-            </button>
-            <button
-              type="button"
-              onClick={handleDeleteList}
-              className="btn-danger py-3 px-4 font-bold"
-            >
-              Delete Wishlist
-            </button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* Modal: Add / Edit Item */}
-      <Modal
+      {/* Modals */}
+      <ItemFormModal
         open={itemModalOpen}
         onClose={() => setItemModalOpen(false)}
-        title={editingItem ? 'Edit Gift Item' : 'Add to Wishlist'}
-      >
-        <form onSubmit={handleSaveItem} className="space-y-4">
-          <Field
-            label="Paste a Store Link (Optional)"
-            htmlFor="item-url"
-            hint="Paste any Amazon, Target, or Walmart link to automatically fill details & photo!"
-          >
-            <div className="flex gap-2">
-              <input
-                id="item-url"
-                type="url"
-                value={itemUrl}
-                onPaste={(e) => {
-                  const text = e.clipboardData.getData('text');
-                  if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
-                    setItemUrl(text);
-                    handleAutoScrape(text);
-                  }
-                }}
-                onChange={(e) => {
-                  setItemUrl(e.target.value);
-                  if (e.target.value.startsWith('http://') || e.target.value.startsWith('https://')) {
-                    setTimeout(() => handleAutoScrape(e.target.value), 250);
-                  }
-                }}
-                placeholder="https://amazon.com/dp/..."
-                className="input text-xs font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => handleAutoScrape()}
-                disabled={scraping || !itemUrl.trim()}
-                className="btn-soft shrink-0 text-xs py-2 px-3 font-bold"
-              >
-                {scraping ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Autofill'}
-              </button>
-            </div>
-            {scraping && (
-              <p className="text-xs text-tomato-600 font-bold mt-1.5 flex items-center gap-1.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Fetching product title, photo &amp; price...
-              </p>
-            )}
-            {scrapeSuccess && (
-              <p className="text-xs text-pine-700 font-bold mt-1 flex items-center gap-1">
-                <Check className="w-3.5 h-3.5" /> {scrapeSuccess}
-              </p>
-            )}
-          </Field>
+        editingItem={editingItem}
+        onSaveItem={handleSaveItem}
+      />
 
-          <Field label="Item Title" htmlFor="item-title">
-            <input
-              id="item-title"
-              type="text"
-              required
-              autoFocus
-              value={itemTitle}
-              onChange={(e) => setItemTitle(e.target.value)}
-              placeholder="e.g. Lego Space Shuttle or Warm Wool Scarf"
-              className="input font-semibold"
-            />
-          </Field>
+      <EditListModal
+        open={editListOpen}
+        onClose={() => setEditListOpen(false)}
+        wishlist={wishlist}
+        onSave={handleSaveListMeta}
+        onDelete={handleDeleteList}
+      />
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Estimated Price ($)" htmlFor="item-price">
-              <input
-                id="item-price"
-                type="number"
-                step="0.01"
-                min="0"
-                value={itemPrice}
-                onChange={(e) => setItemPrice(e.target.value)}
-                placeholder="29.99"
-                className="input"
-              />
-            </Field>
-
-            <Field label="Priority" htmlFor="item-priority">
-              <select
-                id="item-priority"
-                value={itemPriority}
-                onChange={(e) => setItemPriority(e.target.value)}
-                className="input font-semibold"
-              >
-                <option value={1}>Nice to have</option>
-                <option value={2}>⭐ Loved item</option>
-                <option value={3}>⭐⭐ Top Wish / Most Wanted</option>
-              </select>
-            </Field>
-          </div>
-
-          <Field label="Image URL (Optional)" htmlFor="item-img">
-            <input
-              id="item-img"
-              type="url"
-              value={itemImageUrl}
-              onChange={(e) => setItemImageUrl(e.target.value)}
-              placeholder="https://..."
-              className="input text-xs font-mono"
-            />
-          </Field>
-
-          <Field label="Notes / Size / Color Preferences" htmlFor="item-desc">
-            <textarea
-              id="item-desc"
-              rows={3}
-              value={itemDescription}
-              onChange={(e) => setItemDescription(e.target.value)}
-              placeholder="Size Medium, prefers Navy Blue or Forest Green..."
-              className="input text-sm"
-            />
-          </Field>
-
-          <button type="submit" className="btn-primary w-full py-3 text-base">
-            {editingItem ? 'Save Changes' : 'Add Item'}
-          </button>
-        </form>
-      </Modal>
-
-      {/* Return Prompt Modal ("Did you buy this?") */}
-      <Modal
+      <ReturnPromptModal
         open={didYouBuyPromptOpen}
         onClose={() => {
           setDidYouBuyPromptOpen(false);
           setActiveOutboundItem(null);
         }}
-        title="Welcome back!"
-      >
-        <div className="space-y-4 text-center py-2">
-          <div className="text-4xl">🛍️</div>
-          <p className="font-extrabold text-lg text-ink">
-            Did you buy <span className="text-tomato-600 font-black">{activeOutboundItem?.title}</span>?
-          </p>
-          <p className="text-sm text-muted max-w-sm mx-auto">
-            Marking it off makes sure no one else in the family accidentally buys the same thing!
-          </p>
+        item={activeOutboundItem}
+        onClaim={handleClaim}
+      />
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (activeOutboundItem) handleClaim(activeOutboundItem.id, 'purchased');
-                setDidYouBuyPromptOpen(false);
-                setActiveOutboundItem(null);
-              }}
-              className="btn-pine py-3 font-extrabold"
-            >
-              ✓ Yes, I bought it!
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (activeOutboundItem) handleClaim(activeOutboundItem.id, 'reserved');
-                setDidYouBuyPromptOpen(false);
-                setActiveOutboundItem(null);
-              }}
-              className="btn-soft py-3 font-bold"
-            >
-              🎁 Hold it (Reserve)
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setDidYouBuyPromptOpen(false);
-              setActiveOutboundItem(null);
-            }}
-            className="text-xs text-muted hover:text-ink font-semibold mt-2"
-          >
-            No, just looking for now
-          </button>
-        </div>
-      </Modal>
-
-      {/* Share Modal */}
       <ShareModal
         open={shareOpen}
         onClose={() => setShareOpen(false)}
         wishlist={wishlist}
-        shareUrl={shareUrl}
         preSelectedIds={sharePreSelectedIds}
         onItemsReserved={handleItemsReservedFromModal}
       />

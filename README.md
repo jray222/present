@@ -60,8 +60,12 @@ cd ..
 | `SECRET_KEY` | Generated once, stored in data dir | Cryptographic key for JWT sessions and Fernet encryption |
 | `DATABASE_URL` | `sqlite:////app/backend/data/present.db` | SQLite database path |
 | `PUBLIC_URL` | `http://localhost:5732` | Public address used in magic links and Secret Santa envelopes |
+| `FRONTEND_ORIGIN` | Unset / Same as `PUBLIC_URL` | Allowed frontend origin for CORS |
 | `ALLOW_REGISTRATION` | `true` | Allows user sign-up |
-| `TRUST_PROXY_HEADERS` | `true` | Trust `X-Forwarded-*` headers when behind reverse proxy or Cloudflare |
+| `TRUST_PROXY_HEADERS` | `false` | Trust `X-Forwarded-*` / `CF-Connecting-IP` headers when behind reverse proxy |
+| `TRUSTED_PROXIES` | Unset | Comma-separated trusted upstream proxy IPs or CIDR blocks |
+| `WEBAUTHN_RP_ID` | Derived from `PUBLIC_URL` (`localhost`) | Passkey relying party ID domain |
+| `WEBAUTHN_ORIGIN` | Derived from `PUBLIC_URL` (`http://localhost:5732`) | Passkey expected origin URL |
 | `GOOGLE_CLIENT_ID` | Unset | Optional Google OAuth 2.0 client ID |
 | `GOOGLE_CLIENT_SECRET` | Unset | Optional Google OAuth 2.0 client secret |
 | `TZ` | `America/New_York` | Container time zone |
@@ -77,6 +81,6 @@ cd ..
 - **High-Resolution Graphic Card Export**: HTML5 Canvas renderer that exports printable PNG gift cards.
 - **Resilient URL Scraper**: Resolves Amazon (desktop & mobile `/dp/`, `/gp/aw/d/`), Shopify boutiques, Target, and major retailers with automatic clean URL normalization.
 - **Built-in Image Proxy (`/api/images/proxy`)**: Streams external product imagery same-origin, bypassing Safari cross-origin redirect and mixed-content blocks.
-- **Secret Santa Generator (`/santa`)**: Derangement matching solver with custom exclusion rules (e.g. spouses don't draw each other) and private reveal envelope links.
+- **Secret Santa Generator (`/santa`)**: Derangement matching solver with custom exclusion rules (e.g. spouses don't draw each other) and private reveal envelope links (`/santa/reveal/:token` or `/santa/view/:token`).
 - **Child Profiles**: Managed dependent profiles without needing separate email accounts.
 - **Multi-Factor Security**: Passkeys (WebAuthn/FIDO2), TOTP 2FA with backup recovery codes, and Group Admin rescue tools.

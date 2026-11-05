@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Gift } from 'lucide-react';
 import { revealSecretSanta } from '../api';
-import { Spinner, ErrorBanner } from '../components/ui';
+import { Spinner } from '../components/ui';
 
 export default function SantaRevealPage({ token }) {
   const [data, setData] = useState(null);

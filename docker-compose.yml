@@ -14,7 +14,11 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-http://localhost:5732}
       TZ: ${TZ:-America/Indiana/Indianapolis}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
       # Optional:
+      # WEBAUTHN_RP_ID: yourdomain.com
+      # WEBAUTHN_ORIGIN: https://wishlist.yourdomain.com
+      # TRUSTED_PROXIES: 127.0.0.1,172.16.0.0/12
       # GOOGLE_CLIENT_ID: ...
       # GOOGLE_CLIENT_SECRET: ...
       # SECRET_KEY: set one here, or let Present generate and persist it in the volume.

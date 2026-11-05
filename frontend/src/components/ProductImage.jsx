@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 export default function ProductImage({
   src,
@@ -6,23 +6,18 @@ export default function ProductImage({
   placeholderClassName = '',
   isClaimed = false,
 }) {
-  const [imgSrc, setImgSrc] = useState(src);
+  const [prevSrc, setPrevSrc] = useState(src);
+  const [imgSrc, setImgSrc] = useState(() => (src?.startsWith('http://') ? 'https://' + src.slice(7) : src));
   const [failed, setFailed] = useState(!src);
   const [triedProxy, setTriedProxy] = useState(false);
 
-  useEffect(() => {
-    // If src changes, reset state
-    if (!src) {
-      setFailed(true);
-      setImgSrc(null);
-    } else {
-      setFailed(false);
-      setTriedProxy(false);
-      // Auto-upgrade insecure http to https
-      const cleanSrc = src.startsWith('http://') ? 'https://' + src.slice(7) : src;
-      setImgSrc(cleanSrc);
-    }
-  }, [src]);
+  // Synchronize state during render when prop changes (React-recommended pattern)
+  if (src !== prevSrc) {
+    setPrevSrc(src);
+    setFailed(!src);
+    setTriedProxy(false);
+    setImgSrc(src?.startsWith('http://') ? 'https://' + src.slice(7) : src);
+  }
 
   const handleError = () => {
     // If direct load failed and we haven't tried the backend proxy yet, try the proxy

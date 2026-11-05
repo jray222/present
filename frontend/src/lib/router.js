@@ -22,7 +22,7 @@ export function useLocation() {
     };
   }, []);
   const [path, search = ''] = loc.split('?');
-  return { path, search: search ? `?${search}` : '', go: useCallback(navigate, []) };
+  return { path, search: search ? `?${search}` : '', go: useCallback((to, opts) => navigate(to, opts), []) };
 }
 
 export function matchPath(pattern, path) {

@@ -60,3 +60,28 @@ def test_batch_claim_items(client):
     assert data["count"] == 2
     assert len(data["updated_items"]) == 2
 
+def test_rate_limiter_stale_ip_eviction():
+    from app.services.rate_limiter import InMemoryRateLimiter
+
+    limiter = InMemoryRateLimiter(cleanup_interval_seconds=0.1, max_idle_seconds=1.0, max_keys=3)
+
+    # Add entries for multiple IPs
+    assert limiter.check("ip:1.1.1.1", max_requests=5, window_seconds=60) is True
+    assert limiter.check("ip:2.2.2.2", max_requests=5, window_seconds=60) is True
+    assert limiter.key_count == 2
+
+    # Prune with 0 idle threshold evicts all stale keys
+    remaining = limiter.prune(max_idle_seconds=0.0)
+    assert remaining == 0
+    assert limiter.key_count == 0
+
+    # Test capacity eviction when max_keys is exceeded
+    limiter.check("ip:10.0.0.1", max_requests=5, window_seconds=60)
+    limiter.check("ip:10.0.0.2", max_requests=5, window_seconds=60)
+    limiter.check("ip:10.0.0.3", max_requests=5, window_seconds=60)
+    assert limiter.key_count == 3
+
+    # Adding a 4th key when max_keys is 3 triggers capacity eviction
+    limiter.check("ip:10.0.0.4", max_requests=5, window_seconds=60)
+    assert limiter.key_count <= 3
+

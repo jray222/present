@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime, timezone, timedelta
 import secrets
 from app.database import get_db
-from app.models import Wishlist, WishlistItem, ItemClaim, ManagedProfile, WishlistShareToken, User, SystemSetting
+from app.models import Wishlist, WishlistItem, ItemClaim, ManagedProfile, WishlistShareToken, User, SystemSetting, GroupMember
 from app.schemas import (
     WishlistCreate, WishlistUpdate, WishlistOut,
     WishlistItemCreate, WishlistItemUpdate, WishlistItemOut, ItemClaimOut,
-    ClaimActionRequest, ScrapeRequest, ScrapeResponse
+    ScrapeRequest, ScrapeResponse, ItemReorderRequest
 )
 from app.deps import get_current_user, get_current_user_optional
 from app.services.scraper import scrape_product_url
@@ -23,6 +24,8 @@ def _format_item_for_viewer(item: WishlistItem, viewer: Optional[User]) -> Wishl
     if viewer:
         if item.wishlist.user_id == viewer.id:
             is_owner = True
+        elif item.wishlist.managed_profile and item.wishlist.managed_profile.manager_user_id == viewer.id:
+            is_owner = True
 
     claims_out = []
     claim_status = None
@@ -36,6 +39,11 @@ def _format_item_for_viewer(item: WishlistItem, viewer: Optional[User]) -> Wishl
             latest = owner_claims[-1]
             claim_status = latest.status
             for c in owner_claims:
+                needs_reminder = False
+                if c.status == "reserved" and c.reserved_at:
+                    res_at = c.reserved_at if c.reserved_at.tzinfo else c.reserved_at.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) - res_at >= timedelta(days=7):
+                        needs_reminder = True
                 claims_out.append(ItemClaimOut(
                     id=c.id,
                     item_id=c.item_id,
@@ -43,6 +51,7 @@ def _format_item_for_viewer(item: WishlistItem, viewer: Optional[User]) -> Wishl
                     claimed_by_name="You (Reserved)",
                     status=c.status,
                     is_own_claim=True,
+                    needs_purchase_reminder=needs_reminder,
                     reserved_at=c.reserved_at.isoformat() if c.reserved_at else None,
                     purchased_at=c.purchased_at.isoformat() if c.purchased_at else None,
                 ))
@@ -55,6 +64,11 @@ def _format_item_for_viewer(item: WishlistItem, viewer: Optional[User]) -> Wishl
             claim_status = latest.status
             for c in claims:
                 is_own = bool(viewer and c.claimed_by_user_id == viewer.id)
+                needs_reminder = False
+                if c.status == "reserved" and c.reserved_at:
+                    res_at = c.reserved_at if c.reserved_at.tzinfo else c.reserved_at.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) - res_at >= timedelta(days=7):
+                        needs_reminder = True
                 name = c.guest_buyer_name or (c.claimed_by_user.full_name or c.claimed_by_user.username if c.claimed_by_user else "Someone")
                 claims_out.append(ItemClaimOut(
                     id=c.id,
@@ -63,6 +77,7 @@ def _format_item_for_viewer(item: WishlistItem, viewer: Optional[User]) -> Wishl
                     claimed_by_name=name,
                     status=c.status,
                     is_own_claim=is_own,
+                    needs_purchase_reminder=needs_reminder,
                     reserved_at=c.reserved_at.isoformat() if c.reserved_at else None,
                     purchased_at=c.purchased_at.isoformat() if c.purchased_at else None,
                 ))
@@ -78,13 +93,14 @@ def _format_item_for_viewer(item: WishlistItem, viewer: Optional[User]) -> Wishl
         currency=item.currency,
         priority=item.priority,
         desired_quantity=item.desired_quantity,
+        sort_order=item.sort_order if hasattr(item, "sort_order") else 0,
         claims=claims_out,
         is_claimed=is_claimed,
         claim_status=claim_status,
     )
 
 def _format_wishlist_out(wl: Wishlist, viewer: Optional[User]) -> WishlistOut:
-    is_owner = bool(viewer and wl.user_id == viewer.id)
+    is_owner = bool(viewer and (wl.user_id == viewer.id or (wl.managed_profile and wl.managed_profile.manager_user_id == viewer.id)))
     items_out = [_format_item_for_viewer(i, viewer) for i in wl.items]
     managed_name = wl.managed_profile.name if wl.managed_profile else None
     owner_name = wl.user.full_name or wl.user.username
@@ -101,16 +117,21 @@ def _format_wishlist_out(wl: Wishlist, viewer: Optional[User]) -> WishlistOut:
         icon=wl.icon,
         view_mode=wl.view_mode,
         is_owner=is_owner,
+        is_archived=getattr(wl, "is_archived", False),
         items=items_out,
     )
 
 @router.get("", response_model=List[WishlistOut])
 def list_my_wishlists(
     profile_id: Optional[int] = Query(None),
+    include_archived: bool = Query(False),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(Wishlist).filter(Wishlist.user_id == user.id)
+    if not include_archived:
+        query = query.filter(Wishlist.is_archived == False)
+
     if profile_id is not None:
         query = query.filter(Wishlist.managed_profile_id == profile_id)
     else:
@@ -119,16 +140,22 @@ def list_my_wishlists(
     return [_format_wishlist_out(wl, user) for wl in query.all()]
 
 @router.get("/all-family", response_model=List[WishlistOut])
-def list_family_wishlists(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # All wishlists in groups where the current user is a member, plus own wishlists
+def list_family_wishlists(
+    include_archived: bool = Query(False),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    # All wishlists in groups where current user is a member, plus own wishlists
     groups = [m.group_id for m in user.group_memberships]
-    from app.models import GroupMember
-    family_user_ids = db.query(GroupMember.user_id).filter(GroupMember.group_id.in_(groups)).subquery() if groups else []
+    query = db.query(Wishlist)
+    if not include_archived:
+        query = query.filter(Wishlist.is_archived == False)
 
     if groups:
-        wls = db.query(Wishlist).filter(Wishlist.user_id.in_(family_user_ids)).all()
+        family_user_ids = [row[0] for row in db.query(GroupMember.user_id).filter(GroupMember.group_id.in_(groups)).all()]
+        wls = query.filter(Wishlist.user_id.in_(family_user_ids)).all()
     else:
-        wls = db.query(Wishlist).filter(Wishlist.user_id == user.id).all()
+        wls = query.filter(Wishlist.user_id == user.id).all()
     return [_format_wishlist_out(wl, user) for wl in wls]
 
 @router.post("", response_model=WishlistOut)
@@ -149,6 +176,7 @@ def create_wishlist(payload: WishlistCreate, user: User = Depends(get_current_us
         occasion=payload.occasion or "Christmas",
         icon=payload.icon or "🎁",
         view_mode=payload.view_mode or "grid",
+        is_archived=False,
     )
     db.add(wl)
     db.commit()
@@ -156,11 +184,54 @@ def create_wishlist(payload: WishlistCreate, user: User = Depends(get_current_us
     return _format_wishlist_out(wl, user)
 
 @router.get("/{wishlist_id}", response_model=WishlistOut)
-def get_wishlist(wishlist_id: int, user: Optional[User] = Depends(get_current_user_optional), db: Session = Depends(get_db)):
+def get_wishlist(
+    wishlist_id: int,
+    token: Optional[str] = Query(None, description="Optional share token for guest access"),
+    user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db)
+):
     wl = db.query(Wishlist).filter(Wishlist.id == wishlist_id).first()
     if not wl:
         raise HTTPException(status_code=404, detail="Wishlist not found.")
-    return _format_wishlist_out(wl, user)
+
+    # 1. Share token check
+    if token:
+        st = db.query(WishlistShareToken).filter(
+            WishlistShareToken.wishlist_id == wl.id,
+            WishlistShareToken.token == token
+        ).first()
+        if st:
+            return _format_wishlist_out(wl, viewer=None)
+
+    # 2. Authenticated user access check
+    if user:
+        # Owner of wishlist
+        if wl.user_id == user.id:
+            return _format_wishlist_out(wl, user)
+        # Managing parent of child profile
+        if wl.managed_profile and wl.managed_profile.manager_user_id == user.id:
+            return _format_wishlist_out(wl, user)
+
+        # Check shared group membership
+        user_group_ids = [m.group_id for m in user.group_memberships]
+        if user_group_ids:
+            shared_group = db.query(GroupMember).filter(
+                GroupMember.user_id == wl.user_id,
+                GroupMember.group_id.in_(user_group_ids)
+            ).first()
+            if shared_group:
+                return _format_wishlist_out(wl, user)
+
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied. You do not share a group with the owner of this wishlist."
+        )
+
+    # Unauthenticated without token
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Authentication or a valid share token is required to view this wishlist."
+    )
 
 @router.patch("/{wishlist_id}", response_model=WishlistOut)
 def update_wishlist(wishlist_id: int, payload: WishlistUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -178,6 +249,8 @@ def update_wishlist(wishlist_id: int, payload: WishlistUpdate, user: User = Depe
         wl.icon = payload.icon
     if payload.view_mode is not None:
         wl.view_mode = payload.view_mode
+    if payload.is_archived is not None:
+        wl.is_archived = payload.is_archived
 
     db.commit()
     db.refresh(wl)
@@ -192,6 +265,26 @@ def delete_wishlist(wishlist_id: int, user: User = Depends(get_current_user), db
     db.commit()
     return {"status": "deleted"}
 
+@router.post("/{wishlist_id}/reorder")
+def reorder_items(
+    wishlist_id: int,
+    payload: ItemReorderRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    wl = db.query(Wishlist).filter(Wishlist.id == wishlist_id, Wishlist.user_id == user.id).first()
+    if not wl:
+        raise HTTPException(status_code=404, detail="Wishlist not found or unauthorized.")
+
+    for index, item_id in enumerate(payload.item_ids):
+        db.query(WishlistItem).filter(
+            WishlistItem.id == item_id,
+            WishlistItem.wishlist_id == wl.id
+        ).update({"sort_order": index})
+
+    db.commit()
+    return {"status": "reordered", "count": len(payload.item_ids)}
+
 # --- Item Endpoints ---
 
 @router.post("/{wishlist_id}/items", response_model=WishlistItemOut)
@@ -199,6 +292,9 @@ def add_item_to_wishlist(wishlist_id: int, payload: WishlistItemCreate, user: Us
     wl = db.query(Wishlist).filter(Wishlist.id == wishlist_id, Wishlist.user_id == user.id).first()
     if not wl:
         raise HTTPException(status_code=404, detail="Wishlist not found or unauthorized.")
+
+    # Calculate next sort order
+    max_order = db.query(WishlistItem).filter(WishlistItem.wishlist_id == wl.id).count()
 
     item = WishlistItem(
         wishlist_id=wl.id,
@@ -210,6 +306,7 @@ def add_item_to_wishlist(wishlist_id: int, payload: WishlistItemCreate, user: Us
         currency=payload.currency or "USD",
         priority=payload.priority or 1,
         desired_quantity=payload.desired_quantity or 1,
+        sort_order=payload.sort_order if payload.sort_order is not None else max_order,
     )
     db.add(item)
     db.commit()
@@ -238,6 +335,8 @@ def update_wishlist_item(item_id: int, payload: WishlistItemUpdate, user: User =
         item.priority = payload.priority
     if payload.desired_quantity is not None:
         item.desired_quantity = payload.desired_quantity
+    if payload.sort_order is not None:
+        item.sort_order = payload.sort_order
 
     db.commit()
     db.refresh(item)

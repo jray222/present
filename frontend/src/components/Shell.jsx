@@ -1,6 +1,6 @@
 import React from 'react';
-import { Gift, Users, Sparkles, Settings, LogOut, ShoppingBag } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Gift, Users, Sparkles, Settings, LogOut } from 'lucide-react';
+import { useAuth } from '../context/useAuth';
 import { useLocation, onLinkClick } from '../lib/router';
 
 const TABS = [

@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { AuthContext } from './auth-context-def';
 import {
   setAccessToken,
   setOnAuthExpired,
@@ -11,7 +12,7 @@ import {
   verifyGoogleCredential as apiVerifyGoogle,
 } from '../api';
 
-const AuthContext = createContext(null);
+
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -106,5 +107,3 @@ export function AuthProvider({ children }) {
     </AuthContext.Provider>
   );
 }
-
-export const useAuth = () => useContext(AuthContext);

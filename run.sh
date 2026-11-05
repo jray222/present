@@ -15,6 +15,11 @@ else
   "$PY" -m pip install -q -r "$BACKEND/requirements.txt" -r "$BACKEND/requirements-dev.txt"
 fi
 
+if [ "${1:-}" = "backup" ]; then
+  shift
+  exec "$PY" "$BACKEND/scripts/export_db.py" "$@"
+fi
+
 if [ ! -d "$SCRIPT_DIR/frontend/node_modules" ]; then
   echo "Installing frontend dependencies..."
   (cd "$SCRIPT_DIR/frontend" && npm install --no-audit --no-fund)

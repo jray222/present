@@ -138,12 +138,13 @@ class Wishlist(Base):
     icon = Column(String(16), default="🎁", nullable=False)
     view_mode = Column(String(16), default="grid", nullable=False)  # grid, compact
     is_public = Column(Boolean, default=False, nullable=False)
+    is_archived = Column(Boolean, default=False, server_default="0", nullable=False)
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     user = relationship("User", back_populates="wishlists", foreign_keys=[user_id])
     managed_profile = relationship("ManagedProfile", back_populates="wishlists")
-    items = relationship("WishlistItem", back_populates="wishlist", cascade="all, delete-orphan", order_by="WishlistItem.priority.desc(), WishlistItem.id.asc()")
+    items = relationship("WishlistItem", back_populates="wishlist", cascade="all, delete-orphan", order_by="WishlistItem.sort_order.asc(), WishlistItem.priority.desc(), WishlistItem.id.asc()")
     share_tokens = relationship("WishlistShareToken", back_populates="wishlist", cascade="all, delete-orphan")
 
 class WishlistItem(Base):
@@ -159,6 +160,7 @@ class WishlistItem(Base):
     currency = Column(String(8), default="USD", nullable=False)
     priority = Column(Integer, default=1, nullable=False)  # 1=Nice to have, 2=Love this, 3=Most wanted
     desired_quantity = Column(Integer, default=1, nullable=False)
+    sort_order = Column(Integer, default=0, server_default="0", nullable=False)
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
 

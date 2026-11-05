@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Plus, LayoutGrid, List as ListIcon, Share2, Sparkles, ChevronRight,
-  Pencil, Trash2, Check, AlertCircle
+  Plus, Share2, ChevronRight,
+  Pencil, Trash2
 } from 'lucide-react';
 import {
   getMyWishlists, getManagedProfiles, createWishlist, updateWishlist,
@@ -10,7 +10,7 @@ import {
 import { PageHeader, Spinner, ErrorBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
 import ShareModal from '../components/ShareModal';
-import { onLinkClick, navigate } from '../lib/router';
+import { navigate } from '../lib/router';
 
 export default function ListsPage() {
   const [profiles, setProfiles] = useState([]);
@@ -40,24 +40,29 @@ export default function ListsPage() {
   const [shareWishlist, setShareWishlist] = useState(null);
   const [shareUrl, setShareUrl] = useState('');
 
-  const loadData = async (profId = selectedProfileId) => {
-    try {
-      setLoading(true);
-      const [profs, lists] = await Promise.all([
-        getManagedProfiles(),
-        getMyWishlists(profId),
-      ]);
-      setProfiles(profs);
-      setWishlists(lists);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadData(selectedProfileId);
+    let active = true;
+    (async () => {
+      try {
+        const [profs, lists] = await Promise.all([
+          getManagedProfiles(),
+          getMyWishlists(selectedProfileId),
+        ]);
+        if (active) {
+          setProfiles(profs);
+          setWishlists(lists);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, [selectedProfileId]);
 
   const handleCreateList = async (e) => {

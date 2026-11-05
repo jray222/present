@@ -24,7 +24,7 @@ Present is a self-hosted family wishlist registry and gift-sharing application b
    - Children don't need emails or passwords; parents manage items, and relatives can reserve gifts for them in secret.
 6. **Secret Santa Generator**:
    - Random derangement drawer with exclusion constraints (e.g. spouses don't draw each other).
-   - Generates private envelope reveal links (`/santa/view/:token`) and stores results permanently in SQLite.
+   - Generates private envelope reveal links (`/santa/view/:token` or `/santa/reveal/:token`) and stores results permanently in SQLite.
 7. **Share as Text & Image**:
    - One-tap "Copy as Text" formatted for SMS/iMessage.
    - Client-side HTML5 canvas generator (`src/lib/imageExport.js`) that produces a high-res PNG gift card for relatives who refuse to click links.

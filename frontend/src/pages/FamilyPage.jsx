@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Users, Plus, Gift, ArrowRight, UserPlus, Copy, Check, LogOut,
-  Shield, KeyRound, Smartphone, Lock
+  Users, Plus, ArrowRight, UserPlus, Copy, Check, LogOut,
+  Shield, Share2
 } from 'lucide-react';
 import {
   getFamilyWishlists, getMyGroups, createGroup, joinGroup, leaveGroup,
@@ -10,7 +10,7 @@ import {
 import { PageHeader, Spinner, ErrorBanner, SuccessBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
 import { navigate } from '../lib/router';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 
 export default function FamilyPage() {
   const { user } = useAuth();
@@ -28,6 +28,7 @@ export default function FamilyPage() {
   const [inviteCodeInput, setInviteCodeInput] = useState('');
 
   const [copiedCode, setCopiedCode] = useState(null);
+  const [copiedLink, setCopiedLink] = useState(null);
 
   // Admin Member Rescue Modals
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -36,24 +37,29 @@ export default function FamilyPage() {
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [resetBusy, setResetBusy] = useState(false);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const [wls, grps] = await Promise.all([
-        getFamilyWishlists(),
-        getMyGroups(),
-      ]);
-      setWishlists(wls);
-      setGroups(grps);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadData();
+    let active = true;
+    (async () => {
+      try {
+        const [wls, grps] = await Promise.all([
+          getFamilyWishlists(),
+          getMyGroups(),
+        ]);
+        if (active) {
+          setWishlists(wls);
+          setGroups(grps);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleCreateGroup = async (e) => {
@@ -128,6 +134,13 @@ export default function FamilyPage() {
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
+  };
+
+  const copyInviteLink = (code) => {
+    const link = `${window.location.origin}/join?code=${code}`;
+    navigator.clipboard.writeText(link);
+    setCopiedLink(code);
+    setTimeout(() => setCopiedLink(null), 2000);
   };
 
   return (
@@ -260,14 +273,26 @@ export default function FamilyPage() {
                       <p className="text-[11px] font-bold text-muted uppercase tracking-wider">Group Invite Code</p>
                       <span className="font-mono font-extrabold text-sm text-ink tracking-wider">{g.invite_code}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => copyInvite(g.invite_code)}
-                      className="btn-soft text-xs py-1.5 px-3 flex items-center gap-1 font-bold shrink-0"
-                    >
-                      {copiedCode === g.invite_code ? <Check className="w-3.5 h-3.5 text-pine-700" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedCode === g.invite_code ? 'Copied' : 'Copy Code'}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => copyInvite(g.invite_code)}
+                        className="btn-soft text-xs py-1.5 px-2.5 flex items-center gap-1 font-bold"
+                        title="Copy 8-character invite code"
+                      >
+                        {copiedCode === g.invite_code ? <Check className="w-3.5 h-3.5 text-pine-700" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedCode === g.invite_code ? 'Copied' : 'Copy Code'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => copyInviteLink(g.invite_code)}
+                        className="btn-primary text-xs py-1.5 px-2.5 flex items-center gap-1 font-bold"
+                        title="Copy full join URL"
+                      >
+                        {copiedLink === g.invite_code ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
+                        <span>{copiedLink === g.invite_code ? 'Link Copied!' : 'Copy Link'}</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

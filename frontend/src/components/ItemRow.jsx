@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, ExternalLink, Trash2, Pencil, Lock, CheckSquare, Square } from 'lucide-react';
+import { ExternalLink, Trash2, Pencil, Lock, CheckSquare, Square } from 'lucide-react';
 import ProductImage from './ProductImage';
 
 export default function ItemRow({
@@ -39,7 +39,7 @@ export default function ItemRow({
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            onToggleSelect && onToggleSelect(item.id);
+            if (onToggleSelect) onToggleSelect(item.id);
           }}
           className={`p-1.5 rounded-xl transition shrink-0 ${
             isSelected
@@ -94,8 +94,8 @@ export default function ItemRow({
                   onClick={(e) => {
                     if (selectionMode) {
                       e.stopPropagation();
-                    } else {
-                      onExternalLinkClick && onExternalLinkClick(item);
+                    } else if (onExternalLinkClick) {
+                      onExternalLinkClick(item);
                     }
                   }}
                   className="text-tomato-600 dark:text-tomato-400 font-bold hover:underline flex items-center gap-1"
@@ -144,20 +144,40 @@ export default function ItemRow({
         ) : (
           <>
             {myClaim ? (
-              <div className="flex items-center gap-1.5">
-                <span className="chip chip-pine text-xs font-extrabold">
-                  {myClaim.status === 'purchased' ? '✓ You bought this' : '🎁 Reserved by you'}
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onRelease(item.id);
-                  }}
-                  className="text-xs text-muted hover:text-tomato-600 font-bold px-1.5"
-                >
-                  Release
-                </button>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="chip chip-pine text-xs font-extrabold">
+                    {myClaim.status === 'purchased' ? '✓ You bought this' : '🎁 Reserved by you'}
+                  </span>
+                  {myClaim.status === 'reserved' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (onClaim) onClaim(item.id, 'purchased');
+                      }}
+                      className="text-xs text-pine-700 dark:text-pine-300 font-bold px-1 hover:underline"
+                      title="Mark as purchased"
+                    >
+                      Bought it?
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRelease(item.id);
+                    }}
+                    className="text-xs text-muted hover:text-tomato-600 font-bold px-1.5"
+                  >
+                    Release
+                  </button>
+                </div>
+                {myClaim.needs_purchase_reminder && (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/50 dark:text-amber-300 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                    ⚠️ Reserved 7+ days ago
+                  </span>
+                )}
               </div>
             ) : otherClaim ? (
               <span className="text-xs text-muted font-bold flex items-center gap-1">

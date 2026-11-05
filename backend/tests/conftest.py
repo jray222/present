@@ -28,6 +28,13 @@ def db():
     transaction.rollback()
     connection.close()
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    from app.services.rate_limiter import limiter
+    limiter.clear()
+    yield
+    limiter.clear()
+
 @pytest.fixture
 def client(db):
     def override_get_db():

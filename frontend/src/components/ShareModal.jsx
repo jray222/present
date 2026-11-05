@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   Copy, Check, Download, Share2, MessageSquare, Image as ImageIcon,
-  Send, Sparkles, CheckSquare, Square, Smartphone, AlertCircle
+  Send, AlertCircle
 } from 'lucide-react';
 import Modal from './Modal';
 import { exportListAsImage } from '../lib/imageExport';
 import { createShareToken, batchClaimItems } from '../api';
+import ShareItemSelector from './share/ShareItemSelector';
+import ReserveSuggestionModal from './share/ReserveSuggestionModal';
 
 export default function ShareModal({
   open,
@@ -20,158 +22,145 @@ export default function ShareModal({
   const [copiedText, setCopiedText] = useState(false);
   const [exportingImage, setExportingImage] = useState(false);
   const [loadingToken, setLoadingToken] = useState(false);
-  const [canNativeShare, setCanNativeShare] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
 
   // Multi-item selection mode: 'all' or 'selected'
+  const [prevPreSelected, setPrevPreSelected] = useState(preSelectedIds);
   const [shareMode, setShareMode] = useState(preSelectedIds && preSelectedIds.length > 0 ? 'selected' : 'all');
   const [selectedIds, setSelectedIds] = useState(preSelectedIds || []);
 
+  if (preSelectedIds !== prevPreSelected) {
+    setPrevPreSelected(preSelectedIds);
+    if (preSelectedIds && preSelectedIds.length > 0) {
+      setSelectedIds(preSelectedIds);
+      setShareMode('selected');
+    }
+  }
+
+  const [prevInitialUrl, setPrevInitialUrl] = useState(initialShareUrl);
+  if (initialShareUrl !== prevInitialUrl) {
+    setPrevInitialUrl(initialShareUrl);
+    if (initialShareUrl) {
+      setShareUrl(initialShareUrl);
+    }
+  }
+
   // "Mark as reserved?" prompt state
-  const [pendingAction, setPendingAction] = useState(null); // callback to run after prompt
+  const [pendingAction, setPendingAction] = useState(null);
   const [reservePromptOpen, setReservePromptOpen] = useState(false);
   const [reserving, setReserving] = useState(false);
-  const [reservedSuccess, setReservedSuccess] = useState(false);
-
-  // HTTPS note for iOS
   const [showHttpsNote, setShowHttpsNote] = useState(false);
 
-  useEffect(() => {
-    if (typeof navigator !== 'undefined') {
-      const iosCheck = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const mobCheck = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      setIsIOS(iosCheck);
-      setIsMobile(mobCheck);
-      if (navigator.share) {
-        setCanNativeShare(true);
-      }
-    }
-  }, []);
+  // Synchronously compute platform flags
+  const isIOS = typeof navigator !== 'undefined' && (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
 
   useEffect(() => {
-    if (open) {
-      if (preSelectedIds && preSelectedIds.length > 0) {
-        setSelectedIds(preSelectedIds);
-        setShareMode('selected');
-      } else {
-        setShareMode('all');
-      }
-    }
-  }, [open, preSelectedIds]);
+    if (!open || !wishlist || initialShareUrl) return;
 
-  useEffect(() => {
-    if (open && wishlist) {
-      if (initialShareUrl) {
-        setShareUrl(initialShareUrl);
-      } else {
-        (async () => {
-          setLoadingToken(true);
-          try {
-            const res = await createShareToken(wishlist.id);
-            let finalUrl = res.url;
-            if (typeof window !== 'undefined' && res.token) {
-              finalUrl = `${window.location.origin}/shared/${res.token}`;
-            }
-            setShareUrl(finalUrl);
-          } catch (err) {
-            console.error('Failed to create share token:', err);
-            if (typeof window !== 'undefined') {
-              setShareUrl(`${window.location.origin}/lists/${wishlist.id}`);
-            }
-          } finally {
-            setLoadingToken(false);
-          }
-        })();
+    let active = true;
+    (async () => {
+      setLoadingToken(true);
+      try {
+        const res = await createShareToken(wishlist.id);
+        let finalUrl = res.url;
+        if (typeof window !== 'undefined' && res.token) {
+          finalUrl = `${window.location.origin}/shared/${res.token}`;
+        }
+        if (active) setShareUrl(finalUrl);
+      } catch (err) {
+        console.error('Failed to create share token:', err);
+        if (active && typeof window !== 'undefined') {
+          setShareUrl(`${window.location.origin}/lists/${wishlist.id}`);
+        }
+      } finally {
+        if (active) setLoadingToken(false);
       }
-    }
+    })();
+    return () => {
+      active = false;
+    };
   }, [open, wishlist, initialShareUrl]);
 
   if (!wishlist) return null;
 
-  // Selected items subset
   const allItems = wishlist.items || [];
   const activeItems = shareMode === 'selected'
     ? allItems.filter((item) => selectedIds.includes(item.id))
     : allItems;
 
   const toggleItemSelection = (id) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter((x) => x !== id));
-    } else {
-      setSelectedIds([...selectedIds, id]);
-    }
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
   const selectAll = () => setSelectedIds(allItems.map((i) => i.id));
   const deselectAll = () => setSelectedIds([]);
 
-  // Format Text for SMS / Messaging
-  const getFormattedText = (itemsToFormat = activeItems) => {
-    const title = wishlist.title;
-    const recipient = wishlist.managed_profile_name
-      ? `${wishlist.managed_profile_name}'s Wishlist`
-      : `${wishlist.owner_name}'s Wishlist`;
+  const getFormattedText = () => {
+    const recipient = wishlist.managed_profile_name || wishlist.owner_name;
+    const lines = [
+      `🎁 ${recipient}'s Wishlist - ${wishlist.title}`,
+      `Occasion: ${wishlist.occasion || 'Gifts'}`,
+      '',
+    ];
 
-    const isSubset = shareMode === 'selected' && itemsToFormat.length < allItems.length;
-    let text = `🎁 ${recipient} - ${title}${isSubset ? ` (${itemsToFormat.length} selected gifts)` : ''}\n\n`;
-
-    if (itemsToFormat.length === 0) {
-      text += `No items selected!\n`;
+    if (activeItems.length === 0) {
+      lines.push('(No items currently listed)');
     } else {
-      itemsToFormat.forEach((item, idx) => {
-        const price = item.price ? ` ($${Number(item.price).toFixed(2)})` : '';
-        const link = item.url ? ` - ${item.url}` : '';
-        text += `${idx + 1}. ${item.title}${price}${link}\n`;
+      activeItems.forEach((item) => {
+        const priceStr = item.price ? ` ($${Number(item.price).toFixed(2)})` : '';
+        const priorityStr = item.priority === 3 ? ' ⭐ Most Wanted' : '';
+        lines.push(`• ${item.title}${priceStr}${priorityStr}`);
+        if (item.url) lines.push(`  Link: ${item.url}`);
+        if (item.description) lines.push(`  Note: ${item.description}`);
       });
     }
 
     if (shareUrl) {
-      text += `\nView full list & reserve items here:\n${shareUrl}`;
+      lines.push('');
+      lines.push(`View or mark items off online:`);
+      lines.push(shareUrl);
     }
-    return text;
+
+    return lines.join('\n');
   };
 
-  // Helper: check if we should show "Mark as reserved?" prompt before sharing
-  const triggerShareWithReservationCheck = (actionFn) => {
-    // Check if any items being shared are not yet reserved
-    const itemsToCheck = activeItems;
-    const unreservedItems = itemsToCheck.filter((item) => !item.is_claimed && (!item.claims || item.claims.length === 0));
-
-    // If sharing specific items and some are unreserved, suggest marking as reserved
-    if (unreservedItems.length > 0 && (shareMode === 'selected' || itemsToCheck.length <= 3)) {
-      setPendingAction(() => actionFn);
+  const triggerShareWithReservationCheck = (shareAction) => {
+    if (wishlist.is_owner) {
+      shareAction();
+      return;
+    }
+    const unreserved = activeItems.filter((item) => !item.is_claimed);
+    if (unreserved.length > 0) {
+      setPendingAction(() => shareAction);
       setReservePromptOpen(true);
     } else {
-      actionFn();
+      shareAction();
     }
   };
 
-  // Confirm Reservation & Proceed
   const handleConfirmReservationAndShare = async () => {
-    const itemsToReserve = activeItems.filter((item) => !item.is_claimed && (!item.claims || item.claims.length === 0));
-    if (itemsToReserve.length > 0) {
-      setReserving(true);
-      try {
-        const res = await batchClaimItems(itemsToReserve.map((i) => i.id), 'reserved');
-        setReservedSuccess(true);
-        if (onItemsReserved) {
-          onItemsReserved(res.updated_items);
-        }
-      } catch (err) {
-        console.warn('Failed to batch reserve items:', err);
-      } finally {
-        setReserving(false);
+    const unreservedIds = activeItems.filter((item) => !item.is_claimed).map((i) => i.id);
+    setReserving(true);
+    try {
+      if (unreservedIds.length > 0) {
+        await batchClaimItems(unreservedIds, 'reserved');
+        if (onItemsReserved) onItemsReserved(unreservedIds);
+      }
+    } catch (err) {
+      console.error('Failed to batch reserve items:', err);
+    } finally {
+      setReserving(false);
+      setReservePromptOpen(false);
+      if (pendingAction) {
+        pendingAction();
+        setPendingAction(null);
       }
     }
-    setReservePromptOpen(false);
-    if (pendingAction) {
-      pendingAction();
-      setPendingAction(null);
-    }
   };
 
-  // Skip Reservation & Proceed
   const handleSkipReservationAndShare = () => {
     setReservePromptOpen(false);
     if (pendingAction) {
@@ -180,22 +169,19 @@ export default function ShareModal({
     }
   };
 
-  // 1. iMessage / SMS Trigger
   const executeSmsShare = () => {
     const text = getFormattedText();
-    const smsUrl = isIOS
-      ? `sms:&body=${encodeURIComponent(text)}`
-      : `sms:?body=${encodeURIComponent(text)}`;
+    const encoded = encodeURIComponent(text);
+    const smsUrl = isIOS ? `sms:&body=${encoded}` : `sms:?body=${encoded}`;
     window.location.href = smsUrl;
   };
 
-  // 2. WhatsApp Trigger
   const executeWhatsAppShare = () => {
     const text = getFormattedText();
-    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, '_blank');
+    const encoded = encodeURIComponent(text);
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
   };
 
-  // 3. Native iOS / Android Share Trigger
   const executeNativeShare = async () => {
     if (!navigator.share) {
       setShowHttpsNote(true);
@@ -210,13 +196,10 @@ export default function ShareModal({
         url: shareUrl || window.location.href,
       });
     } catch (err) {
-      if (err.name !== 'AbortError') {
-        console.error('Error sharing:', err);
-      }
+      if (err.name !== 'AbortError') console.error('Error sharing:', err);
     }
   };
 
-  // 4. Copy Link
   const handleCopyLink = async () => {
     if (!shareUrl) return;
     await navigator.clipboard.writeText(shareUrl);
@@ -224,7 +207,6 @@ export default function ShareModal({
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  // 5. Copy Formatted Text
   const executeCopyText = async () => {
     const text = getFormattedText();
     await navigator.clipboard.writeText(text);
@@ -232,7 +214,6 @@ export default function ShareModal({
     setTimeout(() => setCopiedText(false), 2000);
   };
 
-  // 6. Download Graphic Card
   const executeDownloadImage = async () => {
     setExportingImage(true);
     try {
@@ -248,95 +229,16 @@ export default function ShareModal({
     <>
       <Modal open={open} onClose={onClose} title="Share Wishlist">
         <div className="space-y-5">
-          {/* Mode Switcher: Full Wishlist vs. Selected Items */}
-          <div className="flex items-center gap-1 p-1 bg-sunk rounded-2xl border border-line">
-            <button
-              type="button"
-              onClick={() => setShareMode('all')}
-              className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-extrabold transition ${
-                shareMode === 'all'
-                  ? 'bg-surface text-ink shadow-sm'
-                  : 'text-muted hover:text-ink'
-              }`}
-            >
-              Full List ({allItems.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShareMode('selected');
-                if (selectedIds.length === 0 && allItems.length > 0) {
-                  setSelectedIds([allItems[0].id]);
-                }
-              }}
-              className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-1.5 ${
-                shareMode === 'selected'
-                  ? 'bg-surface text-ink shadow-sm'
-                  : 'text-muted hover:text-ink'
-              }`}
-            >
-              <span>Selected Items</span>
-              <span className="px-1.5 py-0.5 rounded-full bg-tomato-100 text-tomato-800 text-[10px]">
-                {selectedIds.length}
-              </span>
-            </button>
-          </div>
-
-          {/* Item Checklist when "Selected Items" is active */}
-          {shareMode === 'selected' && (
-            <div className="card p-3 bg-surface border-line space-y-2 max-h-48 overflow-y-auto">
-              <div className="flex items-center justify-between text-xs pb-1 border-b border-line">
-                <span className="font-bold text-muted">
-                  Choose gifts to share ({selectedIds.length} selected):
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={selectAll}
-                    className="text-tomato-600 font-bold hover:underline"
-                  >
-                    Select All
-                  </button>
-                  <span className="text-muted">•</span>
-                  <button
-                    type="button"
-                    onClick={deselectAll}
-                    className="text-muted font-bold hover:underline"
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-
-              {allItems.map((item) => {
-                const checked = selectedIds.includes(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => toggleItemSelection(item.id)}
-                    className={`w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition ${
-                      checked ? 'bg-tomato-50 dark:bg-tomato-950/30' : 'hover:bg-sunk/50'
-                    }`}
-                  >
-                    {checked ? (
-                      <CheckSquare className="w-4 h-4 text-tomato-600 shrink-0" />
-                    ) : (
-                      <Square className="w-4 h-4 text-muted shrink-0" />
-                    )}
-                    <span className="text-xs font-bold text-ink truncate flex-1">
-                      {item.title}
-                    </span>
-                    {item.price && (
-                      <span className="text-xs font-mono font-bold text-pine-700 shrink-0">
-                        ${Number(item.price).toFixed(2)}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <ShareItemSelector
+            shareMode={shareMode}
+            setShareMode={setShareMode}
+            allItems={allItems}
+            selectedIds={selectedIds}
+            setSelectedIds={setSelectedIds}
+            selectAll={selectAll}
+            deselectAll={deselectAll}
+            toggleItemSelection={toggleItemSelection}
+          />
 
           {/* Primary Mobile Sharing Actions */}
           <div className="space-y-2.5">
@@ -344,7 +246,7 @@ export default function ShareModal({
               {isIOS ? '📱 iOS & Mobile Sharing' : '📱 Share Options'}
             </h4>
 
-            {/* iMessage / SMS Button (Always works on iOS & Mobile!) */}
+            {/* iMessage / SMS Button */}
             <button
               type="button"
               onClick={() => triggerShareWithReservationCheck(executeSmsShare)}
@@ -355,7 +257,6 @@ export default function ShareModal({
             </button>
 
             <div className="grid grid-cols-2 gap-2">
-              {/* WhatsApp */}
               <button
                 type="button"
                 onClick={() => triggerShareWithReservationCheck(executeWhatsAppShare)}
@@ -365,7 +266,6 @@ export default function ShareModal({
                 <span>WhatsApp</span>
               </button>
 
-              {/* Native Sheet */}
               <button
                 type="button"
                 onClick={() => triggerShareWithReservationCheck(executeNativeShare)}
@@ -376,7 +276,6 @@ export default function ShareModal({
               </button>
             </div>
 
-            {/* HTTPS note for iOS if system sheet clicked without navigator.share */}
             {showHttpsNote && (
               <div className="banner-warn text-xs p-3 space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold">
@@ -384,7 +283,7 @@ export default function ShareModal({
                   <span>iOS System Share Sheet Note</span>
                 </div>
                 <p className="text-[11px] leading-relaxed">
-                  Apple Safari restricts the native popup share sheet to secure <strong>HTTPS</strong> connections (or localhost).
+                  Apple Safari restricts the native popup share sheet to secure <strong>HTTPS</strong> connections.
                   Use the <strong>&quot;Send via iMessage / SMS&quot;</strong> button above to open Messages directly!
                 </p>
                 <button
@@ -431,14 +330,13 @@ export default function ShareModal({
             </div>
           </div>
 
-          {/* Non-App Relatives: Copy Text & Image Card */}
+          {/* Relatives Without An App: Copy Text & Image Card */}
           <div className="space-y-3">
             <h4 className="font-display font-extrabold text-xs text-muted uppercase tracking-wider">
               For Relatives Who Don&apos;t Want An App
             </h4>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Copy Formatted Text */}
               <button
                 type="button"
                 onClick={() => triggerShareWithReservationCheck(executeCopyText)}
@@ -457,7 +355,6 @@ export default function ShareModal({
                 </span>
               </button>
 
-              {/* Graphic Card Image */}
               <button
                 type="button"
                 onClick={() => triggerShareWithReservationCheck(executeDownloadImage)}
@@ -481,58 +378,14 @@ export default function ShareModal({
         </div>
       </Modal>
 
-      {/* "Mark as reserved?" Modal Confirmation Prompt */}
-      <Modal
+      <ReserveSuggestionModal
         open={reservePromptOpen}
         onClose={handleSkipReservationAndShare}
-        title="Mark as reserved?"
-      >
-        <div className="space-y-4 text-center">
-          <div className="w-14 h-14 rounded-full bg-tomato-100 dark:bg-tomato-950/50 text-tomato-600 flex items-center justify-center mx-auto text-2xl">
-            🎁
-          </div>
-          <div>
-            <h3 className="font-display font-extrabold text-lg text-ink">
-              Reserve these gifts?
-            </h3>
-            <p className="text-xs text-muted mt-1 leading-relaxed">
-              You are sharing{' '}
-              <strong>
-                {activeItems.length} gift{activeItems.length > 1 ? 's' : ''}
-              </strong>{' '}
-              with someone. Would you like to mark {activeItems.length > 1 ? 'them' : 'it'} as{' '}
-              <strong className="text-tomato-600">reserved</strong> so nobody else buys duplicates?
-            </p>
-          </div>
-
-          <div className="p-3 bg-sunk/50 rounded-2xl border border-line text-left max-h-36 overflow-y-auto space-y-1">
-            {activeItems.map((item) => (
-              <div key={item.id} className="text-xs font-bold text-ink flex items-center justify-between">
-                <span className="truncate">• {item.title}</span>
-                {item.price && <span className="font-mono text-muted ml-2">${Number(item.price).toFixed(2)}</span>}
-              </div>
-            ))}
-          </div>
-
-          <div className="space-y-2 pt-2">
-            <button
-              type="button"
-              disabled={reserving}
-              onClick={handleConfirmReservationAndShare}
-              className="btn-primary w-full py-3 text-sm font-extrabold shadow-soft"
-            >
-              {reserving ? 'Reserving...' : '✓ Yes, Mark as Reserved & Share'}
-            </button>
-            <button
-              type="button"
-              onClick={handleSkipReservationAndShare}
-              className="btn-soft w-full py-2.5 text-xs font-bold"
-            >
-              No, Just Share
-            </button>
-          </div>
-        </div>
-      </Modal>
+        itemsToReserve={activeItems.filter((i) => !i.is_claimed)}
+        onConfirmReserve={handleConfirmReservationAndShare}
+        onSkipReserve={handleSkipReservationAndShare}
+        reserving={reserving}
+      />
     </>
   );
 }

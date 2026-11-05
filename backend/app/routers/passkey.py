@@ -20,6 +20,7 @@ from app.models import User, PasskeyCredential
 from app.deps import get_current_user
 from app.config import settings
 from app.routers.auth import _issue_tokens
+from app.services.rate_limiter import rate_limit
 
 router = APIRouter(prefix="/auth/passkey", tags=["passkey"])
 
@@ -90,7 +91,10 @@ def passkey_register_verify(
 
     return {"status": "passkey_registered", "name": cred.name}
 
-@router.post("/login/options")
+@router.post(
+    "/login/options",
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_PASSKEY_PER_MINUTE, 60, "passkey-login"))]
+)
 def passkey_login_options(username: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == username.strip().lower()).first()
     if not user:
@@ -112,7 +116,10 @@ def passkey_login_options(username: str, db: Session = Depends(get_db)):
     _challenges[f"login_{user.id}"] = options.challenge.decode("utf-8") if isinstance(options.challenge, bytes) else options.challenge
     return json.loads(options_to_json(options))
 
-@router.post("/login/verify")
+@router.post(
+    "/login/verify",
+    dependencies=[Depends(rate_limit(settings.RATE_LIMIT_PASSKEY_PER_MINUTE, 60, "passkey-login"))]
+)
 def passkey_login_verify(
     payload: PasskeyLoginVerifyRequest,
     request: Request,

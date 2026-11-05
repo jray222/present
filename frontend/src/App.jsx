@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAuth } from './context/AuthContext';
+import { useAuth } from './context/useAuth';
 import { useLocation, matchPath } from './lib/router';
 import Shell from './components/Shell';
 import AuthGateway from './components/AuthGateway';
@@ -10,6 +10,7 @@ import SecretSantaPage from './pages/SecretSantaPage';
 import SantaRevealPage from './pages/SantaRevealPage';
 import SharedGuestPage from './pages/SharedGuestPage';
 import SettingsPage from './pages/SettingsPage';
+import JoinPage from './pages/JoinPage';
 import { Spinner } from './components/ui';
 
 export default function App() {
@@ -22,7 +23,7 @@ export default function App() {
     return <SharedGuestPage token={params.token} />;
   }
 
-  if ((params = matchPath('/santa/view/:token', path))) {
+  if ((params = matchPath('/santa/view/:token', path)) || (params = matchPath('/santa/reveal/:token', path))) {
     return <SantaRevealPage token={params.token} />;
   }
 
@@ -47,6 +48,8 @@ export default function App() {
     content = <ListDetailPage wishlistId={parseInt(params.id, 10)} />;
   } else if (path === '/family') {
     content = <FamilyPage />;
+  } else if (path === '/join') {
+    content = <JoinPage />;
   } else if (path === '/santa') {
     content = <SecretSantaPage />;
   } else if (path === '/settings') {

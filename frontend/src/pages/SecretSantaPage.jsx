@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Plus, Copy, Check, Lock, Gift, Users } from 'lucide-react';
+import { Sparkles, Plus, Copy, Check } from 'lucide-react';
 import { getSecretSantaDraws, createSecretSantaDraw } from '../api';
 import { PageHeader, Spinner, ErrorBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
@@ -22,20 +22,25 @@ export default function SecretSantaPage() {
   const [createdPairs, setCreatedPairs] = useState(null);
   const [copiedToken, setCopiedToken] = useState(null);
 
-  const loadDraws = async () => {
-    try {
-      setLoading(true);
-      const data = await getSecretSantaDraws();
-      setDraws(data);
-    } catch (err) {
-      setError(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadDraws();
+    let active = true;
+    (async () => {
+      try {
+        const data = await getSecretSantaDraws();
+        if (active) {
+          setDraws(data);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (active) {
+          setError(err);
+          setLoading(false);
+        }
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const handleCreateDraw = async (e) => {

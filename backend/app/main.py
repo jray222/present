@@ -12,11 +12,68 @@ from app.routers import (
 from app.frontend import mount_frontend
 from pathlib import Path
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+def get_cors_origins() -> list[str]:
+    origins = set()
+    if settings.PUBLIC_URL:
+        origins.add(settings.PUBLIC_URL.rstrip("/"))
+    if settings.FRONTEND_ORIGIN:
+        origins.add(settings.FRONTEND_ORIGIN.rstrip("/"))
+    # Local development hosts
+    origins.add("http://localhost:5173")
+    origins.add("http://127.0.0.1:5173")
+    origins.add("http://localhost:5732")
+    origins.add("http://127.0.0.1:5732")
+    return sorted(list(origins))
+
+def run_migrations(target_engine=None, ini_path=None):
+    """
+    Run Alembic database migrations on startup.
+    - If database is fresh (no tables), runs alembic upgrade head to create full schema.
+    - If database already has tables but no migration record, marks it with alembic stamp baseline before upgrading.
+    - Fails loudly if a migration fails, instead of swallowing errors.
+    """
+    from alembic.config import Config
+    from alembic import command
+    from sqlalchemy import inspect, text
+
+    curr_engine = target_engine or engine
+    config_path = ini_path or (Path(__file__).resolve().parent.parent / "alembic.ini")
+
+    alembic_cfg = Config(str(config_path))
+    alembic_cfg.set_main_option("sqlalchemy.url", str(curr_engine.url))
+
+    inspector = inspect(curr_engine)
+    existing_tables = set(inspector.get_table_names())
+
+    has_app_tables = bool(existing_tables.intersection({"users", "wishlists", "wishlist_items"}))
+    has_migration_record = False
+
+    if "alembic_version" in existing_tables:
+        with curr_engine.connect() as conn:
+            result = conn.execute(text("SELECT version_num FROM alembic_version")).fetchall()
+            versions = [row[0] for row in result]
+            if versions:
+                has_migration_record = True
+                if "3742f1b31179" in versions:
+                    conn.execute(
+                        text("UPDATE alembic_version SET version_num = '0002_add_sort_order_and_is_archived' WHERE version_num = '3742f1b31179'")
+                    )
+                    conn.commit()
+
+    if has_app_tables and not has_migration_record:
+        logger.info("Found existing database with tables but no migration record; stamping baseline...")
+        command.stamp(alembic_cfg, "0001_baseline")
+
+    logger.info("Applying database migrations to head...")
+    command.upgrade(alembic_cfg, "head")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables
-    Base.metadata.create_all(bind=engine)
+    run_migrations()
     yield
 
 app = FastAPI(
@@ -27,7 +84,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

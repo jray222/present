@@ -1,13 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import pyotp
 import qrcode
 import io
 import base64
+import os
+import sqlite3
+import tempfile
+from datetime import datetime, timezone
+from typing import List, Optional
 from app.database import get_db
 from app.models import User, BackupCode, PasskeyCredential, SystemSetting
-from app.deps import get_current_user
+from app.deps import get_current_user, get_current_admin_user
 from app.config import settings
 from app.security import encrypt_secret, decrypt_secret, generate_backup_codes, hash_token
 
@@ -115,16 +121,21 @@ class SystemConfigRequest(BaseModel):
     public_url: str
 
 @router.get("/system")
-def get_system_config(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def get_system_config(user: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
     setting = db.query(SystemSetting).filter(SystemSetting.key == "public_url").first()
     public_url = setting.value if setting else settings.PUBLIC_URL
     return {
         "public_url": public_url,
         "default_url": settings.PUBLIC_URL,
+        "is_admin": user.is_superuser,
     }
 
 @router.post("/system")
-def update_system_config(payload: SystemConfigRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+def update_system_config(
+    payload: SystemConfigRequest,
+    user: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
     url = payload.public_url.strip().rstrip("/")
     if url and not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="Public URL must start with http:// or https://")
@@ -138,3 +149,103 @@ def update_system_config(payload: SystemConfigRequest, user: User = Depends(get_
     db.commit()
     return {"status": "saved", "public_url": url}
 
+# --- Admin User Management ---
+
+class UserRoleUpdate(BaseModel):
+    is_superuser: bool
+
+@router.get("/users")
+def list_system_users(admin: User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
+    users = db.query(User).order_by(User.id.asc()).all()
+    return [
+        {
+            "id": u.id,
+            "username": u.username,
+            "email": u.email,
+            "full_name": u.full_name,
+            "is_superuser": u.is_superuser,
+            "is_active": u.is_active,
+            "totp_enabled": u.totp_enabled,
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        }
+        for u in users
+    ]
+
+@router.post("/users/{target_user_id}/role")
+def set_user_role(
+    target_user_id: int,
+    payload: UserRoleUpdate,
+    admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    target = db.query(User).filter(User.id == target_user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if target.id == admin.id and not payload.is_superuser:
+        # Don't let the last admin demote themselves
+        admin_count = db.query(User).filter(User.is_superuser == True).count()
+        if admin_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot demote the only remaining admin.")
+
+    target.is_superuser = payload.is_superuser
+    db.commit()
+    return {"status": "updated", "user_id": target.id, "is_superuser": target.is_superuser}
+
+class AdminResetPasswordRequest(BaseModel):
+    new_password: str
+
+@router.post("/users/{target_user_id}/reset-password")
+def admin_reset_user_password(
+    target_user_id: int,
+    payload: AdminResetPasswordRequest,
+    admin: User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db)
+):
+    target = db.query(User).filter(User.id == target_user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
+    from app.security import hash_password
+    target.password_hash = hash_password(payload.new_password)
+    target.password_changed_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"status": "password_reset", "user_id": target.id}
+
+# --- Database Backup / Export ---
+
+@router.get("/backup")
+def export_database_backup(
+    background_tasks: BackgroundTasks,
+    admin: User = Depends(get_current_admin_user)
+):
+    if not settings.DATABASE_URL.startswith("sqlite"):
+        raise HTTPException(status_code=400, detail="Database backup is only supported for SQLite databases.")
+
+    db_path = settings.DATABASE_URL.replace("sqlite:///", "")
+    resolved_path = os.path.abspath(db_path)
+    if not os.path.exists(resolved_path):
+        raise HTTPException(status_code=404, detail="Database file not found on disk.")
+
+    temp_backup = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+    temp_backup.close()
+
+    src = sqlite3.connect(resolved_path)
+    dest = sqlite3.connect(temp_backup.name)
+    try:
+        with dest:
+            src.backup(dest)
+    finally:
+        src.close()
+        dest.close()
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"present_backup_{timestamp}.db"
+    background_tasks.add_task(os.unlink, temp_backup.name)
+    return FileResponse(
+        path=temp_backup.name,
+        filename=filename,
+        media_type="application/x-sqlite3",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )

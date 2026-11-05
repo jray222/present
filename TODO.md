@@ -60,7 +60,7 @@ Tracking upcoming features, enhancements, and completed milestones for Present.
 ### 7. Secret Santa
 - [x] Random derangement matching solver with custom exclusion rules (e.g. spouses don't draw each other).
 - [x] Persistent assignment storage in SQLite.
-- [x] Secret envelope reveal links (`/santa/reveal/:token`).
+- [x] Secret envelope reveal links (`/santa/reveal/:token` or `/santa/view/:token`).
 
 ### 8. Authentication & Security
 - [x] Password + bcrypt hashing.
@@ -68,14 +68,24 @@ Tracking upcoming features, enhancements, and completed milestones for Present.
 - [x] TOTP Two-Factor Authentication with backup recovery codes.
 - [x] FIDO2 / WebAuthn Passkeys (Biometric / FaceID / TouchID / YubiKey).
 - [x] Google OAuth 2.0 / OpenID Connect backend support.
+- [x] Session revocation ("Log out of other devices").
+- [x] Self-service account password change & admin password reset.
+- [x] Sliding window in-memory rate limiting on authentication and sensitive endpoints.
+- [x] Anti-SSRF safe HTTP client for scraper & image proxy blocking loopback, link-local, private, and metadata IPs.
+- [x] Database migrations managed via Alembic.
+- [x] Database export & backup utility (`run.sh backup` and Settings download).
+
+### 9. New Feature Deliveries
+- [x] Direct invite links that auto-fill group code on sign-up and auto-join for logged-in users (`/join?code=XYZ`).
+- [x] Wishlist item reordering with backend persistence and frontend rank controls (`/api/wishlists/{id}/reorder`).
+- [x] Wishlist archiving to hide past holiday lists without deleting history.
+- [x] Store scraping enhancements for Amazon, Target, Walmart, and Best Buy.
+- [x] 7-day reservation purchase reminder badge & 1-tap "Bought it?" confirmation.
 
 ---
 
 ## 📌 Full Backlog / Upcoming Enhancements
 
-- [ ] Direct invite link that auto-fills group code on sign-up (`https://.../join?code=XYZ`).
-- [ ] Drag-and-drop or manual reordering of items within a wishlist.
-- [ ] Archive wishlist option (hide past Christmas lists without deleting them).
-- [ ] Target / Walmart / BestBuy specific DOM fallbacks.
-- [ ] 7-day reservation expiration warning ("Did you purchase this yet?").
-- [ ] Session revocation ("Log out other devices").
+- [ ] Email / Push notifications for upcoming Secret Santa deadlines.
+- [ ] Drag-and-drop HTML5 drag handler for wishlist items in addition to up/down controls.
+- [ ] Export wishlists to PDF or CSV.
