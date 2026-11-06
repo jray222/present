@@ -28,10 +28,10 @@ def test_ip_filtering():
 def test_ssrf_url_validation():
     # Disallowed URLs
     with pytest.raises(SSRFError):
-        validate_url_for_ssrf("http://127.0.0.1:5732")
+        validate_url_for_ssrf("http://127.0.0.1:9967")
 
     with pytest.raises(SSRFError):
-        validate_url_for_ssrf("http://localhost:5732")
+        validate_url_for_ssrf("http://localhost:9967")
 
     with pytest.raises(SSRFError):
         validate_url_for_ssrf("http://169.254.169.254/latest/meta-data/")
@@ -57,8 +57,8 @@ def test_ssrf_url_validation():
 def test_image_proxy_blocks_internal_hosts(client):
     # Proxying internal / loopback addresses must return 400 Bad Request
     internal_urls = [
-        "http://127.0.0.1:5732/health",
-        "http://localhost:5732/favicon.ico",
+        "http://127.0.0.1:9967/health",
+        "http://localhost:9967/favicon.ico",
         "http://169.254.169.254/latest/meta-data/",
         "http://10.0.0.1/private.png",
         "http://192.168.1.1/router.jpg",

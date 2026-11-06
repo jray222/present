@@ -243,7 +243,7 @@ export default function SettingsPage() {
                   required
                   value={publicUrl}
                   onChange={(e) => setPublicUrl(e.target.value)}
-                  placeholder="http://192.168.1.111:5732 or https://wishlist.yourdomain.com"
+                  placeholder="http://192.168.1.111:9967 or https://wishlist.yourdomain.com"
                   className="input font-mono text-xs"
                 />
                 <button

@@ -25,8 +25,8 @@ def get_cors_origins() -> list[str]:
     # Local development hosts
     origins.add("http://localhost:5173")
     origins.add("http://127.0.0.1:5173")
-    origins.add("http://localhost:5732")
-    origins.add("http://127.0.0.1:5732")
+    origins.add("http://localhost:9967")
+    origins.add("http://127.0.0.1:9967")
     return sorted(list(origins))
 
 def run_migrations(target_engine=None, ini_path=None):

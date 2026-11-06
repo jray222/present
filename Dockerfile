@@ -26,8 +26,8 @@ RUN useradd --create-home --uid 1000 present && mkdir -p /app/backend/data && ch
 USER present
 VOLUME ["/app/backend/data"]
 
-EXPOSE 5732
+EXPOSE 9967
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5732/health')" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9967/health')" || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5732", "--proxy-headers"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9967", "--proxy-headers"]

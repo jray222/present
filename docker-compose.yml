@@ -7,11 +7,11 @@ services:
     pull_policy: always
     container_name: present
     ports:
-      - "5732:5732"
+      - "9967:9967"
     environment:
       APP_ENV: development
-      FRONTEND_ORIGIN: http://localhost:5732
-      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:5732}
+      FRONTEND_ORIGIN: http://localhost:9967
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:9967}
       TZ: ${TZ:-America/Indiana/Indianapolis}
       ALLOW_REGISTRATION: ${ALLOW_REGISTRATION:-true}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}

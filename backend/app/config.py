@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     DATA_KEYS: str = ""
     DATABASE_URL: str = f"sqlite:///{_DATA_DIR / 'present.db'}"
     ALLOW_REGISTRATION: bool = True
-    PUBLIC_URL: str = "http://localhost:5732"
+    PUBLIC_URL: str = "http://localhost:9967"
     FRONTEND_ORIGIN: str = ""
     TRUST_PROXY_HEADERS: bool = False
     TRUSTED_PROXIES: str = ""

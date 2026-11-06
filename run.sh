@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Local development launcher: FastAPI backend (:5732) + Vite frontend (:5173).
+# Local development launcher: FastAPI backend (:9967) + Vite frontend (:5173).
 set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -25,8 +25,8 @@ if [ ! -d "$SCRIPT_DIR/frontend/node_modules" ]; then
   (cd "$SCRIPT_DIR/frontend" && npm install --no-audit --no-fund)
 fi
 
-echo "Starting backend on http://127.0.0.1:5732..."
-(cd "$BACKEND" && "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port 5732 --reload) &
+echo "Starting backend on http://127.0.0.1:9967..."
+(cd "$BACKEND" && "$PY" -m uvicorn app.main:app --host 127.0.0.1 --port 9967 --reload) &
 BACKEND_PID=$!
 
 echo "Starting frontend on http://127.0.0.1:5173..."
@@ -36,6 +36,6 @@ FRONTEND_PID=$!
 trap 'kill $BACKEND_PID $FRONTEND_PID 2>/dev/null' EXIT
 echo "--------------------------------------------------------"
 echo "🎁 Present is running: http://localhost:5173"
-echo "API docs:              http://localhost:5732/docs"
+echo "API docs:              http://localhost:9967/docs"
 echo "--------------------------------------------------------"
 wait

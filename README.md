@@ -10,7 +10,7 @@ A self-hosted family gift registry and wishlist application with anti-spoiler pr
 docker compose up -d
 ```
 
-Open [http://localhost:5732](http://localhost:5732) and create your account. Data persists in the `present-data` Docker volume.
+Open [http://localhost:9967](http://localhost:9967) and create your account. Data persists in the `present-data` Docker volume.
 A cryptographic secret key is generated and stored in the volume on first start.
 
 To build the image locally from source instead of pulling from GitHub:
@@ -47,7 +47,7 @@ cd ..
 ```
 
 - **Frontend dev server**: [http://localhost:5173](http://localhost:5173)
-- **Backend API & Swagger Docs**: [http://localhost:5732/docs](http://localhost:5732/docs)
+- **Backend API & Swagger Docs**: [http://localhost:9967/docs](http://localhost:9967/docs)
 - **Run backend tests**: `pytest backend/tests -q`
 - **Run frontend linter**: `cd frontend && npm run lint`
 
@@ -59,13 +59,13 @@ cd ..
 |---|---|---|
 | `SECRET_KEY` | Generated once, stored in data dir | Cryptographic key for JWT sessions and Fernet encryption |
 | `DATABASE_URL` | `sqlite:////app/backend/data/present.db` | SQLite database path |
-| `PUBLIC_URL` | `http://localhost:5732` | Public address used in magic links and Secret Santa envelopes |
+| `PUBLIC_URL` | `http://localhost:9967` | Public address used in magic links and Secret Santa envelopes |
 | `FRONTEND_ORIGIN` | Unset / Same as `PUBLIC_URL` | Allowed frontend origin for CORS |
 | `ALLOW_REGISTRATION` | `true` | Allows user sign-up |
 | `TRUST_PROXY_HEADERS` | `false` | Trust `X-Forwarded-*` / `CF-Connecting-IP` headers when behind reverse proxy |
 | `TRUSTED_PROXIES` | Unset | Comma-separated trusted upstream proxy IPs or CIDR blocks |
 | `WEBAUTHN_RP_ID` | Derived from `PUBLIC_URL` (`localhost`) | Passkey relying party ID domain |
-| `WEBAUTHN_ORIGIN` | Derived from `PUBLIC_URL` (`http://localhost:5732`) | Passkey expected origin URL |
+| `WEBAUTHN_ORIGIN` | Derived from `PUBLIC_URL` (`http://localhost:9967`) | Passkey expected origin URL |
 | `GOOGLE_CLIENT_ID` | Unset | Optional Google OAuth 2.0 client ID |
 | `GOOGLE_CLIENT_SECRET` | Unset | Optional Google OAuth 2.0 client secret |
 | `TZ` | `America/New_York` | Container time zone |
