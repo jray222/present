@@ -9,12 +9,23 @@ import { createShareToken, batchClaimItems } from '../api';
 import ShareItemSelector from './share/ShareItemSelector';
 import ReserveSuggestionModal from './share/ReserveSuggestionModal';
 
+const EMPTY_PRESELECTED = [];
+
+function areArraysEqual(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 export default function ShareModal({
   open,
   onClose,
   wishlist,
   shareUrl: initialShareUrl,
-  preSelectedIds = [],
+  preSelectedIds = EMPTY_PRESELECTED,
   onItemsReserved = null,
 }) {
   const [shareUrl, setShareUrl] = useState(initialShareUrl || '');
@@ -26,9 +37,9 @@ export default function ShareModal({
   // Multi-item selection mode: 'all' or 'selected'
   const [prevPreSelected, setPrevPreSelected] = useState(preSelectedIds);
   const [shareMode, setShareMode] = useState(preSelectedIds && preSelectedIds.length > 0 ? 'selected' : 'all');
-  const [selectedIds, setSelectedIds] = useState(preSelectedIds || []);
+  const [selectedIds, setSelectedIds] = useState(preSelectedIds || EMPTY_PRESELECTED);
 
-  if (preSelectedIds !== prevPreSelected) {
+  if (!areArraysEqual(preSelectedIds, prevPreSelected)) {
     setPrevPreSelected(preSelectedIds);
     if (preSelectedIds && preSelectedIds.length > 0) {
       setSelectedIds(preSelectedIds);
