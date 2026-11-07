@@ -37,16 +37,19 @@ def test_startup_fresh_database(tmp_path):
     item_cols = [c["name"] for c in inspector.get_columns("wishlist_items")]
     assert "sort_order" in item_cols
 
+    santa_cols = [c["name"] for c in inspector.get_columns("secret_santa_draws")]
+    assert "exclusions_json" in santa_cols
+
     # Alembic version is at head
     with engine.connect() as conn:
         rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert rev == "0002_add_sort_order_and_is_archived"
+        assert rev == "0003_add_secret_santa_exclusions"
 
     # Subsequent restart is idempotent
     run_migrations(target_engine=engine)
     with engine.connect() as conn:
         rev_after = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert rev_after == "0002_add_sort_order_and_is_archived"
+        assert rev_after == "0003_add_secret_santa_exclusions"
 
 def test_startup_older_database(tmp_path):
     """
@@ -103,9 +106,12 @@ def test_startup_older_database(tmp_path):
     item_cols = [c["name"] for c in inspector_after.get_columns("wishlist_items")]
     assert "sort_order" in item_cols
 
+    santa_cols = [c["name"] for c in inspector_after.get_columns("secret_santa_draws")]
+    assert "exclusions_json" in santa_cols
+
     with engine.connect() as conn:
         rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert rev == "0002_add_sort_order_and_is_archived"
+        assert rev == "0003_add_secret_santa_exclusions"
 
         # Verify existing data is preserved and can be queried with new columns
         row = conn.execute(text(

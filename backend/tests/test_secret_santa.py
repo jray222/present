@@ -75,3 +75,65 @@ def test_secret_santa_api_flow(client):
     assert data["title"] == "Holiday 2026 Exchange"
     assert data["giver_name"] == pairs[0]["giver_name"]
     assert data["receiver_name"] == pairs[0]["receiver_name"]
+
+    # List draws: should include pairs with links, names, participants, and exclusions
+    list_res = client.get("/api/secret-santa", headers={"Authorization": f"Bearer {token}"})
+    assert list_res.status_code == 200
+    draws = list_res.json()
+    assert len(draws) == 1
+    draw = draws[0]
+    assert draw["title"] == "Holiday 2026 Exchange"
+    assert draw["participants"] == ["Alice", "Bob", "Charlie", "Diana"]
+    assert draw["exclusions"] == {"Alice": ["Bob"]}
+    assert len(draw["pairs"]) == 4
+    assert draw["pairs"][0]["giver_name"] == pairs[0]["giver_name"]
+    assert draw["pairs"][0]["receiver_name"] == pairs[0]["receiver_name"]
+    assert "/santa/view/" in draw["pairs"][0]["view_url"]
+    assert draw["pairs"][0]["viewed_at"] is not None
+
+    # Edit & re-run the draw
+    draw_id = draw["id"]
+    update_res = client.put(
+        f"/api/secret-santa/{draw_id}",
+        json={
+            "title": "Holiday 2026 Exchange (Updated)",
+            "budget_limit": 75.0,
+            "exchange_date": "2026-12-24",
+            "participants": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
+            "exclusions": {"Alice": ["Bob"], "Bob": ["Alice"]},
+        },
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert update_res.status_code == 200
+    updated = update_res.json()
+    assert updated["title"] == "Holiday 2026 Exchange (Updated)"
+    assert updated["budget_limit"] == 75.0
+    assert updated["exchange_date"] == "2026-12-24"
+    assert updated["participants"] == ["Alice", "Bob", "Charlie", "Diana", "Eve"]
+    assert updated["exclusions"] == {"Alice": ["Bob"], "Bob": ["Alice"]}
+    assert len(updated["pairs"]) == 5
+    for p in updated["pairs"]:
+        assert p["giver_name"] != p["receiver_name"]
+        if p["giver_name"] == "Alice":
+            assert p["receiver_name"] != "Bob"
+        if p["giver_name"] == "Bob":
+            assert p["receiver_name"] != "Alice"
+        assert "/santa/view/" in p["view_url"]
+
+    # Quick redraw with saved participants & exclusions
+    redraw_res = client.post(
+        f"/api/secret-santa/{draw_id}/redraw",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert redraw_res.status_code == 200
+    redrawn = redraw_res.json()
+    assert len(redrawn["pairs"]) == 5
+
+    # Delete draw
+    del_res = client.delete(
+        f"/api/secret-santa/{draw_id}",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    assert del_res.status_code == 200
+    after_del = client.get("/api/secret-santa", headers={"Authorization": f"Bearer {token}"}).json()
+    assert len(after_del) == 0

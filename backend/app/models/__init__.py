@@ -208,6 +208,7 @@ class SecretSantaDraw(Base):
     budget_limit = Column(Numeric(10, 2), nullable=True)
     exchange_date = Column(String(32), nullable=True)
     rules_notes = Column(Text, nullable=True)
+    exclusions_json = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=_utcnow)
 

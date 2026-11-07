@@ -107,7 +107,11 @@ export const adminResetMemberPassword = async (groupId, userId, newPassword) =>
 
 // Secret Santa
 export const getSecretSantaDraws = async () => (await api.get('/secret-santa')).data;
+export const getSecretSantaDraw = async (id) => (await api.get(`/secret-santa/${id}`)).data;
 export const createSecretSantaDraw = async (data) => (await api.post('/secret-santa', data)).data;
+export const updateSecretSantaDraw = async (id, data) => (await api.put(`/secret-santa/${id}`, data)).data;
+export const redrawSecretSantaDraw = async (id) => (await api.post(`/secret-santa/${id}/redraw`)).data;
+export const deleteSecretSantaDraw = async (id) => (await api.delete(`/secret-santa/${id}`)).data;
 export const revealSecretSanta = async (token) => (await api.get(`/secret-santa/reveal/${token}`)).data;
 
 // Settings & Security
