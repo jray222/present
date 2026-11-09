@@ -40,3 +40,11 @@ cd backend && .venv/bin/pytest tests/ -v
 # Frontend lint & build:
 cd frontend && npm run lint && npm run build
 ```
+
+## Security Audits (`cloudflare/security-audit-skill`)
+- **Upstream GitHub Reference**: https://github.com/cloudflare/security-audit-skill (`skills/security-audit/SKILL.md`, installed globally at `~/.gemini/config/skills/security-audit/SKILL.md`).
+- **Sync Latest Upstream Skill Before Auditing**:
+  ```bash
+  git -C ~/.gemini/config/skills/.security-audit-repo pull --ff-only origin main && cp -r ~/.gemini/config/skills/.security-audit-repo/skills/security-audit/* ~/.gemini/config/skills/security-audit/
+  ```
+- **Post-Update Recommendation Rule**: After completing any major feature update or modifying authentication (WebAuthn, OAuth, TOTP, magic links), household/wishlist scoping, anti-spoiler/claim locking, URL scraping, or image exports, proactively recommend running a `security-audit` scan (using `flash` subagents and outputting to `~/security-audit-skill/present/run-<N>/`).
