@@ -8,7 +8,7 @@ vi.mock('../api');
 
 describe('SecretSantaPage Component', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it('displays existing draw names and links and allows editing and re-running', async () => {
@@ -168,5 +168,67 @@ describe('SecretSantaPage Component', () => {
     expect(screen.queryByRole('button', { name: /Edit & Re-run/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Copy All Links/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Re-draw/i })).not.toBeInTheDocument();
+  });
+
+  it('auto-loads saved family roster and gift conflicts into picker and alerts on violated conflicts', async () => {
+    vi.spyOn(api, 'getFamilyPreferences').mockResolvedValueOnce([
+      {
+        person_type: 'user',
+        person_id: 1,
+        name: 'Mom',
+        is_self: true,
+        is_editable: true,
+        preferences: { categories: { sweet_treats: 'Chocolate' }, conflicts: ['Dad'], filled_count: 1, has_preferences: true },
+      },
+      {
+        person_type: 'managed_profile',
+        person_id: 2,
+        name: 'Dad',
+        avatar_emoji: '👨',
+        is_self: false,
+        is_editable: true,
+        preferences: { categories: {}, conflicts: ['Mom'], filled_count: 0, has_preferences: false },
+      },
+      {
+        person_type: 'managed_profile',
+        person_id: 3,
+        name: 'Grandma',
+        avatar_emoji: '👵',
+        is_self: false,
+        is_editable: true,
+        preferences: { categories: { coffee_tea_hot_chocolate: 'Tea' }, conflicts: [], filled_count: 1, has_preferences: true },
+      },
+    ]);
+
+    vi.spyOn(api, 'getSecretSantaDraws').mockResolvedValueOnce([
+      {
+        id: 10,
+        group_id: 1,
+        title: 'Old Draw',
+        is_active: true,
+        is_admin: true,
+        pairs_count: 3,
+        participants: ['Mom', 'Dad', 'Grandma'],
+        exclusions: {},
+        pairs: [
+          { id: 1, giver_name: 'Mom', receiver_name: 'Dad', view_token: 't1', view_url: 'http://x/t1' },
+          { id: 2, giver_name: 'Dad', receiver_name: 'Grandma', view_token: 't2', view_url: 'http://x/t2' },
+          { id: 3, giver_name: 'Grandma', receiver_name: 'Mom', view_token: 't3', view_url: 'http://x/t3' },
+        ],
+      },
+    ]);
+
+    render(<SecretSantaPage />);
+
+    // Existing draw shows alert because Mom drew Dad, violating saved conflict
+    await waitFor(() => {
+      expect(screen.getByText(/Gift conflict alert:/i)).toBeInTheDocument();
+      expect(screen.getByText(/Mom -> Dad/i)).toBeInTheDocument();
+    });
+
+    // Opening New Secret Santa Draw pre-populates family roster and saved conflicts
+    fireEvent.click(screen.getByRole('button', { name: /New Secret Santa Draw/i }));
+    expect(screen.getByLabelText(/Participants/i)).toHaveValue('Mom\nDad\nGrandma');
+    expect(screen.getByLabelText(/Exclusions \/ Gift Conflicts/i)).toHaveValue('Mom -> Dad\nDad -> Mom');
   });
 });

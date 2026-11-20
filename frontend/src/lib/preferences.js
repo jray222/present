@@ -76,3 +76,81 @@ export function formatPreferencesAsText(personName, preferences) {
 
   return lines.join('\n');
 }
+
+export function buildExclusionsFromPeople(people, selectedNames) {
+  const exclusions = {};
+  if (!Array.isArray(people) || !Array.isArray(selectedNames) || selectedNames.length === 0) {
+    return exclusions;
+  }
+
+  const canonicalByLower = new Map();
+  selectedNames.forEach((raw) => {
+    const trimmed = String(raw || '').trim();
+    if (trimmed) canonicalByLower.set(trimmed.toLowerCase(), trimmed);
+  });
+
+  people.forEach((person) => {
+    const giverCanonical = canonicalByLower.get(String(person?.name || '').trim().toLowerCase());
+    if (!giverCanonical) return;
+    const conflicts = person?.preferences?.conflicts || [];
+    conflicts.forEach((targetRaw) => {
+      const targetCanonical = canonicalByLower.get(String(targetRaw || '').trim().toLowerCase());
+      if (!targetCanonical || targetCanonical.toLowerCase() === giverCanonical.toLowerCase()) return;
+      if (!exclusions[giverCanonical]) exclusions[giverCanonical] = [];
+      if (!exclusions[giverCanonical].includes(targetCanonical)) {
+        exclusions[giverCanonical].push(targetCanonical);
+      }
+    });
+  });
+
+  return exclusions;
+}
+
+export function findDrawConflictWarnings(draw, people) {
+  const violated = [];
+  const missingRules = [];
+  if (!draw || !Array.isArray(people) || people.length === 0) {
+    return { violated, missingRules };
+  }
+
+  const participants =
+    draw.participants && draw.participants.length > 0
+      ? draw.participants
+      : (draw.pairs || []).map((p) => p.giver_name);
+  const savedExclusions = buildExclusionsFromPeople(people, participants);
+  const drawExclusions = draw.exclusions || {};
+
+  const hasDrawExclusion = (giver, target) => {
+    const targetLower = target.toLowerCase();
+    for (const [k, vals] of Object.entries(drawExclusions)) {
+      if (k.toLowerCase() === giver.toLowerCase() && Array.isArray(vals)) {
+        if (vals.some((v) => String(v).toLowerCase() === targetLower)) return true;
+      }
+    }
+    return false;
+  };
+
+  Object.entries(savedExclusions).forEach(([giver, targets]) => {
+    targets.forEach((target) => {
+      if (!hasDrawExclusion(giver, target)) {
+        missingRules.push(`${giver} -> ${target}`);
+      }
+    });
+  });
+
+  (draw.pairs || []).forEach((pair) => {
+    const giverLower = String(pair.giver_name || '').trim().toLowerCase();
+    const recvLower = String(pair.receiver_name || '').trim().toLowerCase();
+    for (const [giver, targets] of Object.entries(savedExclusions)) {
+      if (
+        giver.toLowerCase() === giverLower &&
+        targets.some((t) => t.toLowerCase() === recvLower)
+      ) {
+        violated.push(`${pair.giver_name} -> ${pair.receiver_name}`);
+      }
+    }
+  });
+
+  return { violated, missingRules };
+}
+

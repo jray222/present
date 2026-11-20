@@ -46,11 +46,32 @@ GIFT_PREFERENCE_CATEGORIES: List[Dict[str, str]] = [
 VALID_CATEGORY_KEYS = {c["key"] for c in GIFT_PREFERENCE_CATEGORIES}
 MAX_CATEGORY_VALUE_LEN = 1000
 MAX_NOTES_LEN = 2000
+MAX_CONFLICTS = 50
+MAX_CONFLICT_NAME_LEN = 128
 
 
-def parse_gift_preferences(raw: Optional[str]) -> Dict:
+def _clean_conflicts_list(raw_conflicts) -> List[str]:
+    if not isinstance(raw_conflicts, list):
+        return []
+    seen = set()
+    cleaned: List[str] = []
+    for item in raw_conflicts:
+        if not isinstance(item, str):
+            continue
+        trimmed = item.strip()
+        if not trimmed:
+            continue
+        key = trimmed.lower()
+        if key not in seen:
+            seen.add(key)
+            cleaned.append(trimmed[:MAX_CONFLICT_NAME_LEN])
+    return cleaned[:MAX_CONFLICTS]
+
+
+def parse_gift_preferences(raw: Optional[str], include_conflicts: bool = True) -> Dict:
     categories: Dict[str, str] = {c["key"]: "" for c in GIFT_PREFERENCE_CATEGORIES}
     notes: Optional[str] = None
+    conflicts: List[str] = []
     updated_at: Optional[str] = None
 
     if raw:
@@ -66,6 +87,8 @@ def parse_gift_preferences(raw: Optional[str]) -> Dict:
                 raw_notes = data.get("notes")
                 if isinstance(raw_notes, str) and raw_notes.strip():
                     notes = raw_notes.strip()
+                if include_conflicts:
+                    conflicts = _clean_conflicts_list(data.get("conflicts"))
                 raw_updated = data.get("updated_at")
                 if isinstance(raw_updated, str) and raw_updated.strip():
                     updated_at = raw_updated.strip()
@@ -77,6 +100,7 @@ def parse_gift_preferences(raw: Optional[str]) -> Dict:
     return {
         "categories": categories,
         "notes": notes,
+        "conflicts": conflicts if include_conflicts else [],
         "updated_at": updated_at,
         "filled_count": filled_count,
         "has_preferences": has_preferences,
@@ -86,6 +110,7 @@ def parse_gift_preferences(raw: Optional[str]) -> Dict:
 def serialize_gift_preferences(
     categories: Optional[Dict[str, str]],
     notes: Optional[str] = None,
+    conflicts: Optional[List[str]] = None,
 ) -> str:
     clean_categories: Dict[str, str] = {}
     incoming = categories or {}
@@ -113,9 +138,32 @@ def serialize_gift_preferences(
         if trimmed_notes:
             clean_notes = trimmed_notes
 
+    clean_conflicts: List[str] = []
+    if conflicts is not None:
+        if not isinstance(conflicts, list):
+            raise ValueError("Conflicts must be a list of names.")
+        if len(conflicts) > MAX_CONFLICTS:
+            raise ValueError(f"At most {MAX_CONFLICTS} gift conflicts are allowed.")
+        seen = set()
+        for item in conflicts:
+            if not isinstance(item, str):
+                raise ValueError("Each gift conflict must be text.")
+            trimmed_item = item.strip()
+            if not trimmed_item:
+                continue
+            if len(trimmed_item) > MAX_CONFLICT_NAME_LEN:
+                raise ValueError(
+                    f"Conflict name must be {MAX_CONFLICT_NAME_LEN} characters or fewer."
+                )
+            key = trimmed_item.lower()
+            if key not in seen:
+                seen.add(key)
+                clean_conflicts.append(trimmed_item)
+
     payload = {
         "categories": clean_categories,
         "notes": clean_notes,
+        "conflicts": clean_conflicts,
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     return json.dumps(payload)

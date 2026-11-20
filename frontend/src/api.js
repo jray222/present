@@ -58,9 +58,10 @@ export const getMe = async () => (await api.get('/auth/me')).data;
 export const getGoogleConfig = async () => (await api.get('/auth/google/config')).data;
 export const verifyGoogleCredential = async (credential) => (await api.post('/auth/google/verify', { credential })).data;
 
-// Managed Child Profiles
+// Managed Profiles (Non-User Family Members & Children)
 export const getManagedProfiles = async () => (await api.get('/profiles')).data;
 export const createManagedProfile = async (data) => (await api.post('/profiles', data)).data;
+export const updateManagedProfile = async (id, data) => (await api.patch(`/profiles/${id}`, data)).data;
 export const deleteManagedProfile = async (id) => (await api.delete(`/profiles/${id}`)).data;
 
 // Gift Preferences

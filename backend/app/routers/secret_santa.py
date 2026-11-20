@@ -212,7 +212,7 @@ def _resolve_receiver_preferences(db: Session, pair: SecretSantaPair) -> Optiona
     if not target_raw:
         return None
 
-    parsed = parse_gift_preferences(target_raw)
+    parsed = parse_gift_preferences(target_raw, include_conflicts=False)
     if not parsed["has_preferences"]:
         return None
     return parsed

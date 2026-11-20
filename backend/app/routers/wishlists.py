@@ -111,7 +111,7 @@ def _format_wishlist_out(wl: Wishlist, viewer: Optional[User]) -> WishlistOut:
         if wl.managed_profile is not None
         else wl.user.gift_preferences_json
     )
-    owner_preferences = GiftPreferencesOut(**parse_gift_preferences(raw_prefs))
+    owner_preferences = GiftPreferencesOut(**parse_gift_preferences(raw_prefs, include_conflicts=False))
 
     return WishlistOut(
         id=wl.id,

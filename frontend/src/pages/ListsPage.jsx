@@ -213,7 +213,7 @@ export default function ListsPage() {
           className="chip border border-dashed border-tomato-400 bg-transparent text-tomato-600 hover:bg-tomato-50 dark:hover:bg-tomato-900/30 px-3.5 py-2 text-xs font-bold"
         >
           <Plus className="w-3.5 h-3.5" />
-          <span>Add Child</span>
+          <span>Add Person</span>
         </button>
       </div>
 
@@ -392,10 +392,10 @@ export default function ListsPage() {
         </form>
       </Modal>
 
-      {/* Modal: Add Child Profile */}
-      <Modal open={addChildOpen} onClose={() => setAddChildOpen(false)} title="Add Child / Dependent">
+      {/* Modal: Add Person / Child Profile */}
+      <Modal open={addChildOpen} onClose={() => setAddChildOpen(false)} title="Add Family Member / Child">
         <form onSubmit={handleAddChild} className="space-y-4">
-          <Field label="Child's Name" htmlFor="child-name">
+          <Field label="Person's Name" htmlFor="child-name">
             <input
               id="child-name"
               type="text"
@@ -403,17 +403,17 @@ export default function ListsPage() {
               autoFocus
               value={childName}
               onChange={(e) => setChildName(e.target.value)}
-              placeholder="e.g. Liam or Maya"
+              placeholder="e.g. Grandma, Uncle Dave, or Maya"
               className="input"
             />
           </Field>
-          <Field label="Age or Notes (Optional)" htmlFor="child-notes">
+          <Field label="Relationship or Notes (Optional)" htmlFor="child-notes">
             <input
               id="child-notes"
               type="text"
               value={childNotes}
               onChange={(e) => setChildNotes(e.target.value)}
-              placeholder="e.g. Age 5, loves outer space and Legos"
+              placeholder="e.g. Mom's sister, or Age 5 loves Legos"
               className="input"
             />
           </Field>

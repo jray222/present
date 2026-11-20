@@ -261,3 +261,96 @@ def test_preferences_exposed_on_wishlists_and_secret_santa_reveal(client):
             assert "OUTSIDER SECRET" not in str(reveal["receiver_preferences"])
         elif reveal["receiver_name"] == "Kelly":
             assert reveal["receiver_preferences"]["categories"]["coffee_tea_hot_chocolate"] == "Chai latte mix"
+
+
+def test_non_user_family_members_gift_conflicts_and_privacy(client):
+    token, _ = _register(client, "organizer_conflicts", "Kelly")
+
+    # Reject blank profile name
+    assert client.post(
+        "/api/profiles",
+        json={"name": "   "},
+        headers={"Authorization": f"Bearer {token}"},
+    ).status_code == 400
+
+    # Add non-user family members (Grandma, Uncle Dave) and rename one
+    grandma = client.post(
+        "/api/profiles",
+        json={"name": "Grandma", "avatar_emoji": "👵"},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    dave = client.post(
+        "/api/profiles",
+        json={"name": "Dave", "avatar_emoji": "👨"},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+
+    renamed = client.patch(
+        f"/api/profiles/{dave['id']}",
+        json={"name": "Uncle Dave", "avatar_emoji": "🎅"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Uncle Dave"
+    assert renamed.json()["avatar_emoji"] == "🎅"
+
+    # Save preferences + conflicts for Kelly and non-user Grandma (with duplicates/whitespace)
+    kelly_saved = client.put(
+        "/api/preferences/me",
+        json={
+            "categories": {"coffee_tea_hot_chocolate": "Chai tea"},
+            "conflicts": [" Uncle Dave ", "uncle dave", ""],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert kelly_saved.status_code == 200
+    assert kelly_saved.json()["preferences"]["conflicts"] == ["Uncle Dave"]
+
+    grandma_saved = client.put(
+        f"/api/preferences/profiles/{grandma['id']}",
+        json={
+            "categories": {"sweet_treats": "Peppermint bark"},
+            "conflicts": ["Kelly"],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert grandma_saved.status_code == 200
+    assert grandma_saved.json()["preferences"]["conflicts"] == ["Kelly"]
+
+    # /api/preferences/family returns conflicts for both user and non-user profiles
+    fam = client.get("/api/preferences/family", headers={"Authorization": f"Bearer {token}"}).json()
+    by_name = {p["name"]: p for p in fam}
+    assert by_name["Kelly"]["preferences"]["conflicts"] == ["Uncle Dave"]
+    assert by_name["Grandma"]["preferences"]["conflicts"] == ["Kelly"]
+    assert "Uncle Dave" in by_name
+
+    # Wishlist share token MUST NOT expose Secret Santa conflicts
+    wl = client.post(
+        "/api/wishlists",
+        json={"title": "Grandma List", "managed_profile_id": grandma["id"]},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    share_tok = client.post(
+        f"/api/wishlists/{wl['id']}/share-token",
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["token"]
+    shared = client.get(f"/api/wishlists/shared-token/{share_tok}").json()
+    assert shared["owner_preferences"]["categories"]["sweet_treats"] == "Peppermint bark"
+    assert shared["owner_preferences"]["conflicts"] == []
+
+    # Secret Santa draw with non-user Grandma reveals Grandma's preferences but NOT her conflicts
+    pairs = client.post(
+        "/api/secret-santa",
+        json={
+            "title": "Family Draw",
+            "participants": ["Kelly", "Grandma", "Uncle Dave"],
+            "exclusions": {"Kelly": ["Uncle Dave"], "Grandma": ["Kelly"]},
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()
+    for p in pairs:
+        rev = client.get(f"/api/secret-santa/reveal/{p['view_token']}").json()
+        if rev["receiver_name"] == "Grandma":
+            assert rev["receiver_preferences"]["categories"]["sweet_treats"] == "Peppermint bark"
+            assert rev["receiver_preferences"]["conflicts"] == []
+

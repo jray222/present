@@ -24,6 +24,7 @@ const mockFamilyPeople = [
         candles_scents_diffusers: '',
       },
       notes: 'No nuts please',
+      conflicts: [],
       updated_at: '2026-11-19T20:00:00Z',
       filled_count: 2,
       has_preferences: true,
@@ -142,7 +143,7 @@ describe('PreferencesPage', () => {
     });
 
     // Switch to child profile Maya and save
-    fireEvent.click(screen.getByRole('button', { name: /Maya/i }));
+    fireEvent.click(screen.getByRole('button', { name: /🌟.*Maya/i }));
     expect(screen.getByLabelText(/Coffee, Tea, Hot chocolate/i)).toHaveValue('Peppermint hot chocolate');
 
     fireEvent.change(screen.getByLabelText(/Sweet Treats/i), { target: { value: 'Gummy bears' } });
@@ -156,6 +157,82 @@ describe('PreferencesPage', () => {
             coffee_tea_hot_chocolate: 'Peppermint hot chocolate',
             sweet_treats: 'Gummy bears',
           }),
+        })
+      );
+    });
+  });
+
+  it('allows adding a non-user family member and saving gift conflicts', async () => {
+    const withGrandma = [
+      ...mockFamilyPeople,
+      {
+        person_type: 'managed_profile',
+        person_id: 22,
+        name: 'Grandma',
+        manager_name: 'Kelly',
+        avatar_emoji: '👵',
+        is_self: false,
+        is_editable: true,
+        preferences: {
+          categories: {
+            coffee_tea_hot_chocolate: '',
+            beauty_healthcare: '',
+            sweet_treats: '',
+            alcohol: '',
+            snacks_condiments: '',
+            candles_scents_diffusers: '',
+          },
+          notes: null,
+          conflicts: [],
+          updated_at: null,
+          filled_count: 0,
+          has_preferences: false,
+        },
+      },
+    ];
+
+    vi.spyOn(api, 'getFamilyPreferences')
+      .mockResolvedValueOnce(mockFamilyPeople)
+      .mockResolvedValueOnce(withGrandma);
+    vi.spyOn(api, 'createManagedProfile').mockResolvedValue({
+      id: 22,
+      name: 'Grandma',
+      avatar_emoji: '👵',
+    });
+    const updateProfileSpy = vi.spyOn(api, 'updateProfilePreferences').mockResolvedValue({
+      ...withGrandma[3],
+      preferences: {
+        ...withGrandma[3].preferences,
+        conflicts: ['Dave'],
+      },
+    });
+
+    render(<PreferencesPage />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/Coffee, Tea, Hot chocolate/i)).toBeInTheDocument();
+    });
+
+    // Click Add Person and add Grandma (non-user)
+    fireEvent.click(screen.getAllByRole('button', { name: /Add Person/i })[0]);
+    fireEvent.change(screen.getByLabelText(/^Name$/i), { target: { value: 'Grandma' } });
+    fireEvent.click(screen.getByRole('button', { name: /Add Family Member/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Grandma's Preference Ideas/i)).toBeInTheDocument();
+    });
+
+    // Toggle conflict with Dave and save
+    fireEvent.click(screen.getByRole('button', { name: /Add gift conflict with Dave/i }));
+    expect(screen.getByText(/Grandma -> Dave/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Save Preferences/i }));
+
+    await waitFor(() => {
+      expect(updateProfileSpy).toHaveBeenCalledWith(
+        22,
+        expect.objectContaining({
+          conflicts: ['Dave'],
         })
       );
     });

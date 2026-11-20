@@ -11,6 +11,8 @@ import {
   ArrowRight,
   Link2,
   RefreshCw,
+  AlertTriangle,
+  Users,
 } from 'lucide-react';
 import {
   getSecretSantaDraws,
@@ -18,7 +20,12 @@ import {
   updateSecretSantaDraw,
   redrawSecretSantaDraw,
   deleteSecretSantaDraw,
+  getFamilyPreferences,
 } from '../api';
+import {
+  buildExclusionsFromPeople,
+  findDrawConflictWarnings,
+} from '../lib/preferences';
 import { PageHeader, Spinner, ErrorBanner, SuccessBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
 
@@ -68,6 +75,7 @@ function getPairShareUrl(pair) {
 
 export default function SecretSantaPage() {
   const [draws, setDraws] = useState([]);
+  const [familyPeople, setFamilyPeople] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
@@ -107,9 +115,13 @@ export default function SecretSantaPage() {
     let active = true;
     (async () => {
       try {
-        const data = await getSecretSantaDraws();
+        const [data, people] = await Promise.all([
+          getSecretSantaDraws(),
+          Promise.resolve(getFamilyPreferences()).catch(() => []),
+        ]);
         if (active) {
           setDraws(data);
+          setFamilyPeople(Array.isArray(people) ? people : []);
           setLoading(false);
         }
       } catch (err) {
@@ -124,15 +136,70 @@ export default function SecretSantaPage() {
     };
   }, []);
 
+  const mergeConflictsIntoExclusionsText = (names, existingText = '') => {
+    const merged = parseExclusionsFromText(existingText);
+    const saved = buildExclusionsFromPeople(familyPeople, names);
+    Object.entries(saved).forEach(([giver, targets]) => {
+      if (!merged[giver]) merged[giver] = [];
+      targets.forEach((target) => {
+        if (!merged[giver].includes(target)) {
+          merged[giver].push(target);
+        }
+      });
+    });
+    // Prune exclusions pointing to names no longer in participants list
+    const lowerSet = new Set(names.map((n) => n.trim().toLowerCase()));
+    const pruned = {};
+    Object.entries(merged).forEach(([giver, targets]) => {
+      if (!lowerSet.has(giver.toLowerCase())) return;
+      const validTargets = targets.filter((t) => lowerSet.has(t.toLowerCase()));
+      if (validTargets.length > 0) pruned[giver] = validTargets;
+    });
+    return formatExclusionsToText(pruned);
+  };
+
   const openNewDrawModal = () => {
     setEditingDraw(null);
     setTitle('Family Secret Santa 2026');
-    setBudgetLimit('50');
+    setBudgetLimit('100');
     setExchangeDate('');
-    setParticipantsText('Grandma\nMom\nDad\nSarah\nJohn\nUncle Dave');
-    setExclusionsText('Mom -> Dad\nDad -> Mom\nSarah -> John\nJohn -> Sarah');
+    if (familyPeople.length >= 2) {
+      const names = familyPeople.map((p) => p.name);
+      setParticipantsText(names.join('\n'));
+      setExclusionsText(formatExclusionsToText(buildExclusionsFromPeople(familyPeople, names)));
+    } else {
+      setParticipantsText('Grandma\nMom\nDad\nSarah\nJohn\nUncle Dave');
+      setExclusionsText('Mom -> Dad\nDad -> Mom\nSarah -> John\nJohn -> Sarah');
+    }
     setError(null);
     setFormOpen(true);
+  };
+
+  const toggleRosterParticipant = (personName) => {
+    const current = participantsText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const exists = current.some((n) => n.toLowerCase() === personName.toLowerCase());
+    const next = exists
+      ? current.filter((n) => n.toLowerCase() !== personName.toLowerCase())
+      : [...current, personName];
+    setParticipantsText(next.join('\n'));
+    setExclusionsText((prev) => mergeConflictsIntoExclusionsText(next, prev));
+  };
+
+  const handleSelectAllFamily = () => {
+    const names = familyPeople.map((p) => p.name);
+    setParticipantsText(names.join('\n'));
+    setExclusionsText((prev) => mergeConflictsIntoExclusionsText(names, prev));
+  };
+
+  const handleSyncSavedConflicts = () => {
+    const names = participantsText
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    setExclusionsText((prev) => mergeConflictsIntoExclusionsText(names, prev));
   };
 
   const openEditDrawModal = (draw) => {
@@ -406,6 +473,57 @@ export default function SecretSantaPage() {
                   )}
                 </div>
 
+                {/* Draw Exclusions / Gift Conflicts & Warnings */}
+                {(() => {
+                  const drawExclLines = formatExclusionsToText(d.exclusions)
+                    .split('\n')
+                    .filter(Boolean);
+                  const warnings = isDrawAdmin ? findDrawConflictWarnings(d, familyPeople) : { violated: [], missingRules: [] };
+                  if (
+                    drawExclLines.length === 0 &&
+                    warnings.violated.length === 0 &&
+                    warnings.missingRules.length === 0
+                  ) {
+                    return null;
+                  }
+                  return (
+                    <div className="space-y-2">
+                      {drawExclLines.length > 0 && (
+                        <div className="flex items-center flex-wrap gap-1.5 text-xs">
+                          <span className="font-bold text-muted">🚫 Gift Conflicts:</span>
+                          {drawExclLines.map((rule) => (
+                            <span
+                              key={rule}
+                              className="chip bg-sunk text-ink font-mono text-[11px] font-bold"
+                            >
+                              {rule}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {warnings.violated.length > 0 && (
+                        <div className="banner-error text-xs py-2.5 px-3">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Gift conflict alert:</strong> Current matches violate saved preferences conflicts (
+                            <span className="font-mono">{warnings.violated.join(', ')}</span>). Click{' '}
+                            <strong>Edit &amp; Re-run</strong> and sync saved conflicts to fix.
+                          </span>
+                        </div>
+                      )}
+                      {warnings.violated.length === 0 && warnings.missingRules.length > 0 && (
+                        <div className="banner-warn text-xs py-2.5 px-3">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>New saved gift conflicts in Preferences:</strong>{' '}
+                            <span className="font-mono">{warnings.missingRules.join(', ')}</span> not yet applied to this draw.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* Pairs List: Names & Secret Links */}
                 {pairs.length > 0 && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
@@ -509,10 +627,91 @@ export default function SecretSantaPage() {
             </Field>
           </div>
 
+          {/* Quick Pick from Family Roster (App Users + Non-User Family Members) */}
+          {familyPeople.length > 0 && (
+            <div className="rounded-2xl bg-sunk/50 border border-line/70 p-3.5 space-y-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-extrabold text-ink flex items-center gap-1.5">
+                  <Users className="w-3.5 h-3.5 text-tomato-600" />
+                  <span>Pick from Family Roster ({familyPeople.length})</span>
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleSelectAllFamily}
+                    className="btn-soft text-[11px] py-1 px-2.5 font-bold"
+                  >
+                    Select All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSyncSavedConflicts}
+                    className="btn-soft text-[11px] py-1 px-2.5 font-bold"
+                  >
+                    Sync Conflicts
+                  </button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {(() => {
+                  const selectedLower = new Set(
+                    participantsText
+                      .split('\n')
+                      .map((s) => s.trim().toLowerCase())
+                      .filter(Boolean)
+                  );
+                  return familyPeople.map((person) => {
+                    const isPicked = selectedLower.has(person.name.trim().toLowerCase());
+                    const conflictCount = (person.preferences?.conflicts || []).length;
+                    const filledCount = person.preferences?.filled_count || 0;
+                    return (
+                      <button
+                        key={`${person.person_type}:${person.person_id}`}
+                        type="button"
+                        onClick={() => toggleRosterParticipant(person.name)}
+                        className={`chip px-3 py-1.5 text-xs font-bold flex items-center gap-1 ${
+                          isPicked
+                            ? 'chip-on'
+                            : 'bg-surface text-ink border border-line hover:bg-sunk'
+                        }`}
+                      >
+                        <span>
+                          {person.person_type === 'managed_profile'
+                            ? person.avatar_emoji || '🎁'
+                            : '🎁'}
+                        </span>
+                        <span>{person.name}</span>
+                        {filledCount > 0 && (
+                          <span
+                            className={`text-[10px] px-1 rounded ${
+                              isPicked ? 'bg-white/20 text-white' : 'bg-pine-100 text-pine-800'
+                            }`}
+                          >
+                            ♥{filledCount}
+                          </span>
+                        )}
+                        {conflictCount > 0 && (
+                          <span
+                            title={`Has ${conflictCount} saved gift conflict(s)`}
+                            className={`text-[10px] px-1 rounded ${
+                              isPicked ? 'bg-white/25 text-white' : 'bg-tomato-100 text-tomato-700'
+                            }`}
+                          >
+                            🚫{conflictCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+            </div>
+          )}
+
           <Field
             label="Participants (One name per line)"
             htmlFor="draw-participants"
-            hint="Enter at least 2 family members or friends."
+            hint="Enter at least 2 family members or tap names above."
           >
             <textarea
               id="draw-participants"
@@ -526,9 +725,9 @@ export default function SecretSantaPage() {
           </Field>
 
           <Field
-            label="Exclusions (Optional, one rule per line)"
+            label="Exclusions / Gift Conflicts (Optional, one rule per line)"
             htmlFor="draw-exclusions"
-            hint="Format: Person -> Excluded (e.g. John -> Sarah ensures John won't draw Sarah)."
+            hint="Format: Person -> Excluded (e.g. John -> Sarah ensures John won't draw Sarah). Auto-populated from saved Gift Conflicts."
           >
             <textarea
               id="draw-exclusions"
@@ -539,6 +738,37 @@ export default function SecretSantaPage() {
               className="input font-mono text-xs"
             />
           </Field>
+
+          {/* Live Conflict Validation Check */}
+          {(() => {
+            const names = participantsText
+              .split('\n')
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const parsedExcl = parseExclusionsFromText(exclusionsText);
+            const blockedPeople = names.filter((giver) => {
+              const excluded = new Set(
+                (parsedExcl[giver] || []).map((x) => x.toLowerCase())
+              );
+              const eligible = names.filter(
+                (r) =>
+                  r.toLowerCase() !== giver.toLowerCase() &&
+                  !excluded.has(r.toLowerCase())
+              );
+              return names.length >= 2 && eligible.length === 0;
+            });
+            if (blockedPeople.length === 0) return null;
+            return (
+              <div className="banner-warn text-xs py-2.5 px-3">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Impossible conflict rule:</strong>{' '}
+                  <span className="font-bold">{blockedPeople.join(', ')}</span> has no eligible
+                  person left to draw. Add more participants or remove a conflict rule.
+                </span>
+              </div>
+            );
+          })()}
 
           <button type="submit" disabled={busy} className="btn-primary w-full py-3">
             {busy

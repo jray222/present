@@ -57,7 +57,13 @@ class ChangePasswordRequest(BaseModel):
 
 class ManagedProfileCreate(BaseModel):
     name: str
-    avatar_emoji: Optional[str] = "🧸"
+    avatar_emoji: Optional[str] = "🎁"
+    notes: Optional[str] = None
+    birth_date: Optional[str] = None
+
+class ManagedProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    avatar_emoji: Optional[str] = None
     notes: Optional[str] = None
     birth_date: Optional[str] = None
 
@@ -162,11 +168,13 @@ class GiftPreferenceCategoryOut(BaseModel):
 class GiftPreferencesUpdate(BaseModel):
     categories: Dict[str, str] = {}
     notes: Optional[str] = None
+    conflicts: List[str] = []
 
 
 class GiftPreferencesOut(BaseModel):
     categories: Dict[str, str] = {}
     notes: Optional[str] = None
+    conflicts: List[str] = []
     updated_at: Optional[str] = None
     filled_count: int = 0
     has_preferences: bool = False

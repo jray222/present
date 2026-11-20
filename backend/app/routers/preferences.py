@@ -73,7 +73,7 @@ def update_my_preferences(
 ):
     try:
         user.gift_preferences_json = serialize_gift_preferences(
-            payload.categories, payload.notes
+            payload.categories, payload.notes, payload.conflicts
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -208,7 +208,7 @@ def update_profile_preferences(
 
     try:
         profile.gift_preferences_json = serialize_gift_preferences(
-            payload.categories, payload.notes
+            payload.categories, payload.notes, payload.conflicts
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

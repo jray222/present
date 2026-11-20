@@ -13,6 +13,7 @@ export default function GiftPreferencesCard({
   collapsible = false,
   defaultOpen = true,
   showCopy = true,
+  showConflicts = false,
   onEdit = null,
   emptyMessage = null,
   compact = false,
@@ -22,8 +23,9 @@ export default function GiftPreferencesCard({
 
   const hasPrefs = hasAnyPreferences(preferences);
   const filledCount = countFilledCategories(preferences);
+  const conflicts = showConflicts ? preferences?.conflicts || [] : [];
 
-  if (!hasPrefs && !emptyMessage && !onEdit) {
+  if (!hasPrefs && conflicts.length === 0 && !emptyMessage && !onEdit) {
     return null;
   }
 
@@ -148,9 +150,46 @@ export default function GiftPreferencesCard({
                   </p>
                 </div>
               )}
+
+              {conflicts.length > 0 && (
+                <div className="rounded-2xl bg-tomato-50/60 dark:bg-tomato-900/20 border border-tomato-200/70 dark:border-tomato-900/40 p-3 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-xs font-extrabold text-tomato-700 dark:text-tomato-200">
+                    <span aria-hidden="true">🚫</span>
+                    <span>Secret Santa Gift Conflicts</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {conflicts.map((target) => (
+                      <span
+                        key={target}
+                        className="chip bg-surface text-ink border border-line text-[11px] font-mono font-bold"
+                      >
+                        {personName ? `${personName} -> ${target}` : target}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </>
+      )}
+      {(!collapsible || open) && !hasPrefs && conflicts.length > 0 && (
+        <div className="rounded-2xl bg-tomato-50/60 dark:bg-tomato-900/20 border border-tomato-200/70 dark:border-tomato-900/40 p-3 space-y-1.5 text-left">
+          <div className="flex items-center gap-1.5 text-xs font-extrabold text-tomato-700 dark:text-tomato-200">
+            <span aria-hidden="true">🚫</span>
+            <span>Secret Santa Gift Conflicts</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {conflicts.map((target) => (
+              <span
+                key={target}
+                className="chip bg-surface text-ink border border-line text-[11px] font-mono font-bold"
+              >
+                {personName ? `${personName} -> ${target}` : target}
+              </span>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
