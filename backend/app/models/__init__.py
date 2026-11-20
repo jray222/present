@@ -19,6 +19,7 @@ class User(Base):
 
     password_hash = Column(String(255), nullable=True)
     password_changed_at = Column(DateTime, default=_utcnow)
+    token_version = Column(Integer, default=0, server_default="0", nullable=False)
 
     # Google OAuth
     google_sub = Column(String(255), unique=True, nullable=True, index=True)
@@ -32,6 +33,9 @@ class User(Base):
     totp_enabled = Column(Boolean, default=False, nullable=False)
     totp_confirmed_at = Column(DateTime, nullable=True)
     totp_last_used_step = Column(Integer, nullable=True)
+
+    # Gift Preferences (JSON)
+    gift_preferences_json = Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=_utcnow)
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
@@ -96,6 +100,7 @@ class ManagedProfile(Base):
     avatar_emoji = Column(String(16), default="🧸", nullable=False)
     notes = Column(String(255), nullable=True)
     birth_date = Column(String(32), nullable=True)
+    gift_preferences_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=_utcnow)
 
     manager = relationship("User", back_populates="managed_profiles")

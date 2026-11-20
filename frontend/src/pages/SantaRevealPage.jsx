@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { revealSecretSanta } from '../api';
 import { Spinner } from '../components/ui';
+import GiftPreferencesCard from '../components/GiftPreferencesCard';
+import { hasAnyPreferences } from '../lib/preferences';
 
 export default function SantaRevealPage({ token }) {
   const [data, setData] = useState(null);
@@ -44,7 +46,7 @@ export default function SantaRevealPage({ token }) {
 
   return (
     <div className="min-h-screen bg-cream flex items-center justify-center p-4">
-      <div className="card card-pad max-w-md w-full text-center space-y-6 shadow-lift border-line">
+      <div className={`card card-pad ${opened && hasAnyPreferences(data.receiver_preferences) ? 'max-w-lg' : 'max-w-md'} w-full text-center space-y-6 shadow-lift border-line`}>
         <div className="space-y-1">
           <span className="chip chip-sunny text-xs font-bold">🎅 Secret Santa Draw</span>
           <h1 className="font-display font-extrabold text-2xl text-ink mt-2">{data.title}</h1>
@@ -87,6 +89,21 @@ export default function SantaRevealPage({ token }) {
               <p className="text-xs text-muted">
                 Exchange date: <span className="font-bold text-ink">{data.exchange_date}</span>
               </p>
+            )}
+            {data.rules_notes && (
+              <p className="text-xs text-muted bg-sunk/60 rounded-2xl p-3">
+                {data.rules_notes}
+              </p>
+            )}
+
+            {hasAnyPreferences(data.receiver_preferences) && (
+              <div className="pt-2">
+                <GiftPreferencesCard
+                  personName={data.receiver_name}
+                  preferences={data.receiver_preferences}
+                  compact
+                />
+              </div>
             )}
 
             <p className="text-xs text-muted/80 italic pt-2">

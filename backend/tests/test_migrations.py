@@ -40,16 +40,23 @@ def test_startup_fresh_database(tmp_path):
     santa_cols = [c["name"] for c in inspector.get_columns("secret_santa_draws")]
     assert "exclusions_json" in santa_cols
 
+    user_cols = [c["name"] for c in inspector.get_columns("users")]
+    assert "gift_preferences_json" in user_cols
+    assert "token_version" in user_cols
+
+    profile_cols = [c["name"] for c in inspector.get_columns("managed_profiles")]
+    assert "gift_preferences_json" in profile_cols
+
     # Alembic version is at head
     with engine.connect() as conn:
         rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert rev == "0003_add_secret_santa_exclusions"
+        assert rev == "0005_add_user_token_version"
 
     # Subsequent restart is idempotent
     run_migrations(target_engine=engine)
     with engine.connect() as conn:
         rev_after = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert rev_after == "0003_add_secret_santa_exclusions"
+        assert rev_after == "0005_add_user_token_version"
 
 def test_startup_older_database(tmp_path):
     """
@@ -109,9 +116,16 @@ def test_startup_older_database(tmp_path):
     santa_cols = [c["name"] for c in inspector_after.get_columns("secret_santa_draws")]
     assert "exclusions_json" in santa_cols
 
+    user_cols = [c["name"] for c in inspector_after.get_columns("users")]
+    assert "gift_preferences_json" in user_cols
+    assert "token_version" in user_cols
+
+    profile_cols = [c["name"] for c in inspector_after.get_columns("managed_profiles")]
+    assert "gift_preferences_json" in profile_cols
+
     with engine.connect() as conn:
         rev = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        assert rev == "0003_add_secret_santa_exclusions"
+        assert rev == "0005_add_user_token_version"
 
         # Verify existing data is preserved and can be queried with new columns
         row = conn.execute(text(

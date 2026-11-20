@@ -140,4 +140,33 @@ describe('SecretSantaPage Component', () => {
       expect(screen.getAllByText(/🎁 John/).length).toBeGreaterThan(0);
     });
   });
+
+  it('hides admin actions and match links when is_admin is false', async () => {
+    vi.spyOn(api, 'getSecretSantaDraws').mockResolvedValueOnce([
+      {
+        id: 2,
+        group_id: 1,
+        title: 'Member View Exchange',
+        budget_limit: 100,
+        exchange_date: 'Dec 25',
+        is_active: true,
+        is_admin: false,
+        pairs_count: 4,
+        participants: ['Mom', 'Dad', 'Sarah', 'John'],
+        exclusions: {},
+        pairs: [],
+      },
+    ]);
+
+    render(<SecretSantaPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Member View Exchange')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText(/managed privately by your group admin/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Edit & Re-run/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Copy All Links/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Re-draw/i })).not.toBeInTheDocument();
+  });
 });

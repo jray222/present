@@ -3,7 +3,7 @@ import { Smartphone, Key, Trash2, CheckCircle2, Globe, Save, LogOut, ShieldAlert
 import {
   setup2FA, confirm2FA, getPasskeys, deletePasskey,
   getSystemSettings, updateSystemSettings, logoutOtherDevices,
-  changePassword, downloadDatabaseBackup
+  changePassword, downloadDatabaseBackup, setAccessToken
 } from '../api';
 import { PageHeader, Spinner, ErrorBanner, SuccessBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
@@ -160,7 +160,10 @@ export default function SettingsPage() {
     }
     setChangingPassword(true);
     try {
-      await changePassword(currentPassword, newPassword);
+      const res = await changePassword(currentPassword, newPassword);
+      if (res?.access_token) {
+        setAccessToken(res.access_token);
+      }
       setChangePwdOpen(false);
       setCurrentPassword('');
       setNewPassword('');

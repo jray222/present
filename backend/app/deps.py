@@ -23,6 +23,14 @@ def get_current_user_optional(
     except (TypeError, ValueError):
         return None
     user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user:
+        return None
+    try:
+        token_tv = int(payload.get("tv", 0))
+    except (TypeError, ValueError):
+        return None
+    if token_tv != int(user.token_version or 0):
+        return None
     return user
 
 def get_current_user(

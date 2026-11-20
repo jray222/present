@@ -270,7 +270,7 @@ export default function SecretSantaPage() {
         icon={Sparkles}
         actions={
           <div className="flex items-center gap-2 flex-wrap">
-            {draws.length > 0 && (
+            {draws.some((d) => d.is_admin !== false && (d.pairs || []).length > 0) && (
               <button
                 type="button"
                 onClick={() => setShowNames((prev) => !prev)}
@@ -321,6 +321,7 @@ export default function SecretSantaPage() {
         <div className="space-y-6">
           {draws.map((d) => {
             const pairs = d.pairs || [];
+            const isDrawAdmin = d.is_admin !== false;
             return (
               <div key={d.id} className="card card-pad space-y-4">
                 {/* Draw Card Header */}
@@ -341,64 +342,68 @@ export default function SecretSantaPage() {
                     </div>
                     <h3 className="font-display font-extrabold text-xl text-ink">{d.title}</h3>
                     <p className="text-xs text-muted mt-0.5">
-                      {d.pairs_count} participants • Click Edit &amp; Re-run anytime to modify names or redraw
+                      {isDrawAdmin
+                        ? `${d.pairs_count} participants • Click Edit & Re-run anytime to modify names or redraw`
+                        : `${d.pairs_count} participants • Matches and reveal links are managed privately by your group admin`}
                     </p>
                   </div>
 
-                  {/* Draw Actions */}
-                  <div className="flex items-center flex-wrap gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setActiveResults({ draw: d, pairs })}
-                      className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
-                    >
-                      <Link2 className="w-3.5 h-3.5" />
-                      <span>View Links Modal</span>
-                    </button>
+                  {/* Draw Actions (Group Admins / Owners Only) */}
+                  {isDrawAdmin && (
+                    <div className="flex items-center flex-wrap gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setActiveResults({ draw: d, pairs })}
+                        className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        <span>View Links Modal</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => copyAllLinks(d.title, pairs, `card-${d.id}`)}
-                      className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
-                    >
-                      {copiedAllKey === `card-${d.id}` ? (
-                        <Check className="w-3.5 h-3.5 text-pine-700" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                      <span>{copiedAllKey === `card-${d.id}` ? 'Copied All!' : 'Copy All Links'}</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => copyAllLinks(d.title, pairs, `card-${d.id}`)}
+                        className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
+                      >
+                        {copiedAllKey === `card-${d.id}` ? (
+                          <Check className="w-3.5 h-3.5 text-pine-700" />
+                        ) : (
+                          <Copy className="w-3.5 h-3.5" />
+                        )}
+                        <span>{copiedAllKey === `card-${d.id}` ? 'Copied All!' : 'Copy All Links'}</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => openEditDrawModal(d)}
-                      className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
-                    >
-                      <Pencil className="w-3.5 h-3.5" />
-                      <span>Edit &amp; Re-run</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditDrawModal(d)}
+                        className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Edit &amp; Re-run</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleQuickRedraw(d)}
-                      disabled={busy}
-                      title="Re-shuffle matches with current participants and rules"
-                      className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
-                    >
-                      <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Re-draw</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickRedraw(d)}
+                        disabled={busy}
+                        title="Re-shuffle matches with current participants and rules"
+                        className="btn-soft text-xs py-2 px-3 flex items-center gap-1.5 font-bold"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>Re-draw</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteDraw(d)}
-                      title="Delete this Secret Santa draw"
-                      aria-label={`Delete ${d.title}`}
-                      className="btn-icon text-muted hover:text-tomato-600 hover:bg-tomato-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteDraw(d)}
+                        title="Delete this Secret Santa draw"
+                        aria-label={`Delete ${d.title}`}
+                        className="btn-icon text-muted hover:text-tomato-600 hover:bg-tomato-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Pairs List: Names & Secret Links */}

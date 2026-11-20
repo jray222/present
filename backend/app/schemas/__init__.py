@@ -1,5 +1,18 @@
-from typing import List, Optional
-from pydantic import BaseModel, EmailStr, ConfigDict
+from typing import Dict, List, Optional
+from urllib.parse import urlparse
+from pydantic import BaseModel, EmailStr, ConfigDict, field_validator
+
+
+def _validate_http_url(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return None
+    trimmed = v.strip()
+    if not trimmed:
+        return None
+    parsed = urlparse(trimmed)
+    if parsed.scheme.lower() not in ("http", "https") or not parsed.netloc:
+        raise ValueError("URL must start with http:// or https://")
+    return trimmed
 
 class UserOut(BaseModel):
     id: int
@@ -69,6 +82,11 @@ class WishlistItemCreate(BaseModel):
     desired_quantity: Optional[int] = 1
     sort_order: Optional[int] = 0
 
+    @field_validator("url", "image_url")
+    @classmethod
+    def check_urls(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_http_url(v)
+
 class WishlistItemUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
@@ -79,6 +97,11 @@ class WishlistItemUpdate(BaseModel):
     priority: Optional[int] = None
     desired_quantity: Optional[int] = None
     sort_order: Optional[int] = None
+
+    @field_validator("url", "image_url")
+    @classmethod
+    def check_urls(cls, v: Optional[str]) -> Optional[str]:
+        return _validate_http_url(v)
 
 class ItemClaimOut(BaseModel):
     id: int
@@ -129,12 +152,46 @@ class WishlistUpdate(BaseModel):
     view_mode: Optional[str] = None
     is_archived: Optional[bool] = None
 
+class GiftPreferenceCategoryOut(BaseModel):
+    key: str
+    label: str
+    icon: str
+    placeholder: str
+
+
+class GiftPreferencesUpdate(BaseModel):
+    categories: Dict[str, str] = {}
+    notes: Optional[str] = None
+
+
+class GiftPreferencesOut(BaseModel):
+    categories: Dict[str, str] = {}
+    notes: Optional[str] = None
+    updated_at: Optional[str] = None
+    filled_count: int = 0
+    has_preferences: bool = False
+
+
+class PersonPreferencesOut(BaseModel):
+    person_type: str  # "user" or "managed_profile"
+    person_id: int
+    name: str
+    username: Optional[str] = None
+    manager_name: Optional[str] = None
+    avatar_color: Optional[str] = None
+    avatar_emoji: Optional[str] = None
+    is_self: bool = False
+    is_editable: bool = False
+    preferences: GiftPreferencesOut
+
+
 class WishlistOut(BaseModel):
     id: int
     user_id: int
     managed_profile_id: Optional[int] = None
     managed_profile_name: Optional[str] = None
     owner_name: str
+    owner_preferences: Optional[GiftPreferencesOut] = None
     title: str
     description: Optional[str] = None
     occasion: str

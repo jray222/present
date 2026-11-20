@@ -1,10 +1,11 @@
 import React from 'react';
-import { Gift, Users, Sparkles, Settings, LogOut } from 'lucide-react';
+import { Gift, Heart, Users, Sparkles, Settings, LogOut } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
 import { useLocation, onLinkClick } from '../lib/router';
 
 const TABS = [
   { to: '/lists', label: 'Wishlists', Icon: Gift, match: (p) => p === '/' || p.startsWith('/lists') },
+  { to: '/preferences', label: 'Preferences', Icon: Heart, match: (p) => p.startsWith('/preferences') },
   { to: '/family', label: 'Family', Icon: Users, match: (p) => p.startsWith('/family') },
   { to: '/santa', label: 'Secret Santa', Icon: Sparkles, match: (p) => p.startsWith('/santa') },
   { to: '/settings', label: 'Settings', Icon: Settings, match: (p) => p.startsWith('/settings') },
@@ -118,7 +119,7 @@ export default function Shell({ children }) {
               key={tab.to}
               href={tab.to}
               onClick={onLinkClick(tab.to)}
-              className={`flex flex-col items-center justify-center w-16 py-1.5 rounded-2xl transition ${
+              className={`flex flex-col items-center justify-center flex-1 max-w-[80px] py-1.5 rounded-2xl transition ${
                 active ? 'text-tomato-600 font-extrabold' : 'text-muted font-semibold hover:text-ink'
               }`}
             >

@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Users, Plus, ArrowRight, UserPlus, Copy, Check, LogOut,
-  Shield, Share2
+  Shield, Share2, Heart
 } from 'lucide-react';
 import {
   getFamilyWishlists, getMyGroups, createGroup, joinGroup, leaveGroup,
-  adminResetMember2FA, adminResetMemberPassword
+  adminResetMember2FA, adminResetMemberPassword, getUserPreferences
 } from '../api';
 import { PageHeader, Spinner, ErrorBanner, SuccessBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
+import GiftPreferencesCard from '../components/GiftPreferencesCard';
 import { navigate } from '../lib/router';
 import { useAuth } from '../context/useAuth';
 
@@ -36,6 +37,26 @@ export default function FamilyPage() {
   const [resetPasswordOpen, setResetPasswordOpen] = useState(false);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [resetBusy, setResetBusy] = useState(false);
+
+  // Member Gift Preferences Modal
+  const [prefsModalOpen, setPrefsModalOpen] = useState(false);
+  const [prefsLoading, setPrefsLoading] = useState(false);
+  const [viewedPersonPrefs, setViewedPersonPrefs] = useState(null);
+
+  const loadData = useCallback(async () => {
+    try {
+      const [wls, grps] = await Promise.all([
+        getFamilyWishlists(),
+        getMyGroups(),
+      ]);
+      setWishlists(wls);
+      setGroups(grps);
+      setLoading(false);
+    } catch (err) {
+      setError(err);
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -143,6 +164,21 @@ export default function FamilyPage() {
     setTimeout(() => setCopiedLink(null), 2000);
   };
 
+  const handleViewMemberPreferences = async (member) => {
+    setPrefsModalOpen(true);
+    setPrefsLoading(true);
+    setViewedPersonPrefs(null);
+    try {
+      const data = await getUserPreferences(member.user_id);
+      setViewedPersonPrefs(data);
+    } catch (err) {
+      setError(err);
+      setPrefsModalOpen(false);
+    } finally {
+      setPrefsLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -150,7 +186,15 @@ export default function FamilyPage() {
         subtitle="Manage multiple family groups, invite relatives, and coordinate gifts"
         icon={Users}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => navigate('/preferences')}
+              className="btn-soft text-xs py-2 px-3 font-bold flex items-center gap-1.5"
+            >
+              <Heart className="w-4 h-4 text-tomato-600" />
+              <span>Gift Preferences</span>
+            </button>
             <button
               type="button"
               onClick={() => setJoinGroupOpen(true)}
@@ -234,33 +278,51 @@ export default function FamilyPage() {
                               <span className="text-muted truncate">(@{m.username})</span>
                             </div>
 
-                            {/* Admin Rescue Controls */}
-                            {isGroupAdmin && m.user_id !== user?.id && (
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedGroup(g);
-                                    setSelectedMember(m);
-                                    setResetPasswordOpen(true);
-                                  }}
-                                  title="Reset password for locked-out member"
-                                  className="btn-ghost text-[10px] py-1 px-2 hover:text-tomato-600 font-bold"
-                                >
-                                  Reset Pwd
-                                </button>
-                                {m.totp_enabled && (
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleViewMemberPreferences(m)}
+                                title="View gift preferences"
+                                className={`btn-ghost text-[10px] py-1 px-2 font-bold flex items-center gap-1 ${
+                                  m.has_preferences ? 'text-pine-700 dark:text-pine-300' : 'text-muted'
+                                }`}
+                              >
+                                <Heart className="w-3 h-3" />
+                                <span>
+                                  {m.has_preferences
+                                    ? `Prefs (${m.preferences_filled_count || 1})`
+                                    : 'Prefs'}
+                                </span>
+                              </button>
+
+                              {/* Admin Rescue Controls */}
+                              {isGroupAdmin && m.user_id !== user?.id && (
+                                <>
                                   <button
                                     type="button"
-                                    onClick={() => handleAdminReset2FA(g, m)}
-                                    title="Reset 2FA for locked-out member"
-                                    className="btn-ghost text-[10px] py-1 px-2 text-tomato-600 font-bold"
+                                    onClick={() => {
+                                      setSelectedGroup(g);
+                                      setSelectedMember(m);
+                                      setResetPasswordOpen(true);
+                                    }}
+                                    title="Reset password for locked-out member"
+                                    className="btn-ghost text-[10px] py-1 px-2 hover:text-tomato-600 font-bold"
                                   >
-                                    Reset 2FA
+                                    Reset Pwd
                                   </button>
-                                )}
-                              </div>
-                            )}
+                                  {m.totp_enabled && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleAdminReset2FA(g, m)}
+                                      title="Reset 2FA for locked-out member"
+                                      className="btn-ghost text-[10px] py-1 px-2 text-tomato-600 font-bold"
+                                    >
+                                      Reset 2FA
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -410,9 +472,10 @@ export default function FamilyPage() {
               type="password"
               required
               autoFocus
+              minLength={8}
               value={newPasswordInput}
               onChange={(e) => setNewPasswordInput(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder="At least 8 characters"
               className="input"
             />
           </Field>
@@ -420,6 +483,33 @@ export default function FamilyPage() {
             {resetBusy ? 'Resetting Password...' : 'Save & Set New Password'}
           </button>
         </form>
+      </Modal>
+      {/* Modal: Member Gift Preferences */}
+      <Modal
+        open={prefsModalOpen}
+        onClose={() => setPrefsModalOpen(false)}
+        title={viewedPersonPrefs ? `${viewedPersonPrefs.name}'s Gift Preferences` : 'Gift Preferences'}
+        maxWidth="max-w-2xl"
+      >
+        {prefsLoading ? (
+          <div className="py-12 flex justify-center">
+            <Spinner className="w-7 h-7 text-tomato-600" />
+          </div>
+        ) : viewedPersonPrefs ? (
+          <GiftPreferencesCard
+            personName={viewedPersonPrefs.name}
+            preferences={viewedPersonPrefs.preferences}
+            onEdit={
+              viewedPersonPrefs.is_editable
+                ? () => {
+                    setPrefsModalOpen(false);
+                    navigate('/preferences');
+                  }
+                : null
+            }
+            emptyMessage={`${viewedPersonPrefs.name} hasn't filled out their gift preferences yet.`}
+          />
+        ) : null}
       </Modal>
     </div>
   );

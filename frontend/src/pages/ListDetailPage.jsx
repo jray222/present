@@ -15,6 +15,8 @@ import ItemFormModal from '../components/list/ItemFormModal';
 import SelectionToolbar from '../components/list/SelectionToolbar';
 import ReturnPromptModal from '../components/list/ReturnPromptModal';
 import EditListModal from '../components/list/EditListModal';
+import GiftPreferencesCard from '../components/GiftPreferencesCard';
+import { hasAnyPreferences } from '../lib/preferences';
 import { navigate } from '../lib/router';
 
 export default function ListDetailPage({ wishlistId }) {
@@ -348,6 +350,22 @@ export default function ListDetailPage({ wishlistId }) {
           )}
         </div>
       </div>
+
+      {/* Gift Preferences Card (Collapsible) */}
+      {(hasAnyPreferences(wishlist.owner_preferences) || isOwner) && (
+        <GiftPreferencesCard
+          personName={ownerDisplayName}
+          preferences={wishlist.owner_preferences}
+          collapsible
+          defaultOpen={!isOwner && hasAnyPreferences(wishlist.owner_preferences)}
+          onEdit={isOwner ? () => navigate('/preferences') : null}
+          emptyMessage={
+            isOwner
+              ? `Add favorite coffee, treats, scents, and other gift ideas so family members know what ${ownerDisplayName} loves.`
+              : null
+          }
+        />
+      )}
 
       {/* Items List / Grid */}
       {wishlist.items?.length === 0 ? (

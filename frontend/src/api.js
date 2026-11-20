@@ -63,6 +63,16 @@ export const getManagedProfiles = async () => (await api.get('/profiles')).data;
 export const createManagedProfile = async (data) => (await api.post('/profiles', data)).data;
 export const deleteManagedProfile = async (id) => (await api.delete(`/profiles/${id}`)).data;
 
+// Gift Preferences
+export const getPreferenceCategories = async () => (await api.get('/preferences/categories')).data;
+export const getMyPreferences = async () => (await api.get('/preferences/me')).data;
+export const updateMyPreferences = async (data) => (await api.put('/preferences/me', data)).data;
+export const getFamilyPreferences = async () => (await api.get('/preferences/family')).data;
+export const getUserPreferences = async (userId) => (await api.get(`/preferences/users/${userId}`)).data;
+export const getProfilePreferences = async (profileId) => (await api.get(`/preferences/profiles/${profileId}`)).data;
+export const updateProfilePreferences = async (profileId, data) =>
+  (await api.put(`/preferences/profiles/${profileId}`, data)).data;
+
 // Wishlists & Items
 export const getMyWishlists = async (profileId = null) => {
   const url = profileId ? `/wishlists?profile_id=${profileId}` : '/wishlists';
@@ -93,7 +103,8 @@ export const getMyClaims = async () => (await api.get('/claims/my-claims')).data
 // Grandparent Magic Link Sharing
 export const createShareToken = async (wishlistId, label = 'Family Link') =>
   (await api.post(`/wishlists/${wishlistId}/share-token`, null, { params: { label } })).data;
-export const getSharedWishlist = async (token) => (await api.get(`/wishlists/shared-token/${token}`)).data;
+export const getSharedWishlist = async (token) =>
+  (await api.get(`/wishlists/shared-token/${encodeURIComponent(token)}`)).data;
 
 // Groups / Multiple Families & Invites
 export const getMyGroups = async () => (await api.get('/groups')).data;
@@ -112,7 +123,8 @@ export const createSecretSantaDraw = async (data) => (await api.post('/secret-sa
 export const updateSecretSantaDraw = async (id, data) => (await api.put(`/secret-santa/${id}`, data)).data;
 export const redrawSecretSantaDraw = async (id) => (await api.post(`/secret-santa/${id}/redraw`)).data;
 export const deleteSecretSantaDraw = async (id) => (await api.delete(`/secret-santa/${id}`)).data;
-export const revealSecretSanta = async (token) => (await api.get(`/secret-santa/reveal/${token}`)).data;
+export const revealSecretSanta = async (token) =>
+  (await api.get(`/secret-santa/reveal/${encodeURIComponent(token)}`)).data;
 
 // Settings & Security
 export const setup2FA = async () => (await api.post('/settings/2fa/setup')).data;

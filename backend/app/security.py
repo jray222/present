@@ -41,11 +41,32 @@ def decrypt_secret(cipher_text: str) -> str:
     except Exception:
         return ""
 
-def create_access_token(user_id: int, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(
+    user_id: int,
+    token_version: int = 0,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES))
     payload = {
         "sub": str(user_id),
         "type": "access",
+        "tv": int(token_version or 0),
+        "exp": expire,
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+
+def create_2fa_challenge_token(
+    user_id: int,
+    token_version: int = 0,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=5))
+    payload = {
+        "sub": str(user_id),
+        "type": "2fa_challenge",
+        "tv": int(token_version or 0),
         "exp": expire,
         "iat": datetime.now(timezone.utc),
     }

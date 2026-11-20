@@ -8,10 +8,12 @@ from app.models import Wishlist, WishlistItem, ItemClaim, ManagedProfile, Wishli
 from app.schemas import (
     WishlistCreate, WishlistUpdate, WishlistOut,
     WishlistItemCreate, WishlistItemUpdate, WishlistItemOut, ItemClaimOut,
-    ScrapeRequest, ScrapeResponse, ItemReorderRequest
+    ScrapeRequest, ScrapeResponse, ItemReorderRequest, GiftPreferencesOut
 )
 from app.deps import get_current_user, get_current_user_optional
 from app.services.scraper import scrape_product_url
+from app.services.preferences import parse_gift_preferences
+from app.services.rate_limiter import rate_limit
 from app.config import settings
 
 router = APIRouter(prefix="/wishlists", tags=["wishlists"])
@@ -104,6 +106,12 @@ def _format_wishlist_out(wl: Wishlist, viewer: Optional[User]) -> WishlistOut:
     items_out = [_format_item_for_viewer(i, viewer) for i in wl.items]
     managed_name = wl.managed_profile.name if wl.managed_profile else None
     owner_name = wl.user.full_name or wl.user.username
+    raw_prefs = (
+        wl.managed_profile.gift_preferences_json
+        if wl.managed_profile is not None
+        else wl.user.gift_preferences_json
+    )
+    owner_preferences = GiftPreferencesOut(**parse_gift_preferences(raw_prefs))
 
     return WishlistOut(
         id=wl.id,
@@ -111,6 +119,7 @@ def _format_wishlist_out(wl: Wishlist, viewer: Optional[User]) -> WishlistOut:
         managed_profile_id=wl.managed_profile_id,
         managed_profile_name=managed_name,
         owner_name=owner_name,
+        owner_preferences=owner_preferences,
         title=wl.title,
         description=wl.description,
         occasion=wl.occasion,
@@ -160,7 +169,7 @@ def list_family_wishlists(
 
 @router.post("", response_model=WishlistOut)
 def create_wishlist(payload: WishlistCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if payload.managed_profile_id:
+    if payload.managed_profile_id is not None:
         profile = db.query(ManagedProfile).filter(
             ManagedProfile.id == payload.managed_profile_id,
             ManagedProfile.manager_user_id == user.id,
@@ -390,8 +399,12 @@ def get_shared_wishlist_by_token(token: str, db: Session = Depends(get_db)):
 
 # --- Scraping Endpoint ---
 
-@router.post("/scrape", response_model=ScrapeResponse)
-async def scrape_url(payload: ScrapeRequest):
+@router.post(
+    "/scrape",
+    response_model=ScrapeResponse,
+    dependencies=[Depends(rate_limit(20, 60, "scrape"))],
+)
+async def scrape_url(payload: ScrapeRequest, user: User = Depends(get_current_user)):
     data = await scrape_product_url(payload.url.strip())
     return ScrapeResponse(
         title=data.get("title") or "",

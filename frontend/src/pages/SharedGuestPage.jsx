@@ -4,6 +4,8 @@ import { getSharedWishlist, claimItem, releaseClaim } from '../api';
 import { Spinner, ErrorBanner } from '../components/ui';
 import Modal, { Field } from '../components/Modal';
 import ProductImage from '../components/ProductImage';
+import GiftPreferencesCard from '../components/GiftPreferencesCard';
+import { hasAnyPreferences } from '../lib/preferences';
 
 export default function SharedGuestPage({ token }) {
   const [wishlist, setWishlist] = useState(null);
@@ -159,6 +161,17 @@ export default function SharedGuestPage({ token }) {
         </div>
 
         <ErrorBanner error={error} />
+
+        {/* Gift Preferences Card for Grandparents & Guests */}
+        {hasAnyPreferences(wishlist.owner_preferences) && (
+          <GiftPreferencesCard
+            personName={owner}
+            preferences={wishlist.owner_preferences}
+            collapsible
+            defaultOpen
+            showCopy={false}
+          />
+        )}
 
         {/* Wishlist Items List (Large readable format for grandparents) */}
         <div className="space-y-4">

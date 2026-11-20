@@ -208,8 +208,14 @@ def admin_reset_user_password(
     if len(payload.new_password) < 8:
         raise HTTPException(status_code=400, detail="New password must be at least 8 characters.")
     from app.security import hash_password
+    from app.models import RefreshToken
     target.password_hash = hash_password(payload.new_password)
     target.password_changed_at = datetime.now(timezone.utc)
+    target.token_version = (target.token_version or 0) + 1
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == target.id,
+        RefreshToken.revoked == False,
+    ).update({"revoked": True})
     db.commit()
     return {"status": "password_reset", "user_id": target.id}
 

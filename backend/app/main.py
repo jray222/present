@@ -7,7 +7,7 @@ from app.config import settings
 # Routers
 from app.routers import (
     auth, google_auth, passkey, profiles, wishlists, claims,
-    secret_santa, settings as settings_router, groups, images
+    secret_santa, settings as settings_router, groups, images, preferences
 )
 from app.frontend import mount_frontend
 from pathlib import Path
@@ -107,6 +107,7 @@ app.include_router(secret_santa.router, prefix="/api")
 app.include_router(groups.router, prefix="/api")
 app.include_router(settings_router.router, prefix="/api")
 app.include_router(images.router, prefix="/api")
+app.include_router(preferences.router, prefix="/api")
 
 # Mount frontend dist
 _dist = Path(os.getenv("FRONTEND_DIST", Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"))

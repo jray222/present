@@ -33,4 +33,30 @@ describe('SharedGuestPage (Grandparent Mode)', () => {
     // Tap "I Bought This" button should be available for grandparent
     expect(screen.getByRole('button', { name: /I Bought This/i })).toBeInTheDocument();
   });
+
+  it('displays owner gift preferences when filled out', async () => {
+    vi.spyOn(api, 'getSharedWishlist').mockResolvedValue({
+      id: 100,
+      title: 'Christmas 2026',
+      owner_name: 'Kelly',
+      owner_preferences: {
+        categories: {
+          sweet_treats: 'Salted dark chocolate',
+          candles_scents_diffusers: 'Pine & vanilla',
+        },
+        notes: null,
+        filled_count: 2,
+        has_preferences: true,
+      },
+      items: [],
+    });
+
+    render(<SharedGuestPage token="prefs-token" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Kelly's Gift Preferences/i)).toBeInTheDocument();
+      expect(screen.getByText('Salted dark chocolate')).toBeInTheDocument();
+      expect(screen.getByText('Pine & vanilla')).toBeInTheDocument();
+    });
+  });
 });

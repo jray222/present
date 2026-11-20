@@ -6,9 +6,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import FamilyGroup, GroupMember, SecretSantaDraw, SecretSantaPair, SystemSetting, User
+from app.models import FamilyGroup, GroupMember, ManagedProfile, SecretSantaDraw, SecretSantaPair, SystemSetting, User
 from app.deps import get_current_user
 from app.services.secret_santa import solve_secret_santa
+from app.services.preferences import parse_gift_preferences
 from app.config import settings
 from app.services.rate_limiter import rate_limit
 
@@ -104,8 +105,16 @@ def _user_is_draw_admin(user: User, draw: SecretSantaDraw) -> bool:
     )
 
 
+def _require_draw_admin(user: User, draw: SecretSantaDraw) -> None:
+    if not _user_can_access_draw(user, draw):
+        raise HTTPException(status_code=404, detail="Secret Santa draw not found.")
+    if not _user_is_draw_admin(user, draw):
+        raise HTTPException(status_code=403, detail="Group admin privileges required.")
+
+
 def _format_draw(d: SecretSantaDraw, user: User, base_url: str) -> DrawOut:
-    pairs_out = [_format_pair(p, base_url) for p in d.pairs]
+    is_admin = _user_is_draw_admin(user, d)
+    pairs_out = [_format_pair(p, base_url) for p in d.pairs] if is_admin else []
     participants = [p.giver_name for p in d.pairs]
     return DrawOut(
         id=d.id,
@@ -117,9 +126,9 @@ def _format_draw(d: SecretSantaDraw, user: User, base_url: str) -> DrawOut:
         is_active=d.is_active,
         pairs_count=len(d.pairs),
         participants=participants,
-        exclusions=_parse_exclusions(d.exclusions_json),
+        exclusions=_parse_exclusions(d.exclusions_json) if is_admin else {},
         pairs=pairs_out,
-        is_admin=_user_is_draw_admin(user, d),
+        is_admin=is_admin,
     )
 
 
@@ -130,6 +139,83 @@ def _clean_participants(names: List[str]) -> List[str]:
     if len(set(cleaned)) != len(cleaned):
         raise HTTPException(status_code=400, detail="Participant names must be unique.")
     return cleaned
+
+
+def _build_group_user_lookup(db: Session, group_id: int) -> Dict[str, int]:
+    """Map lowercased full_name and username of group members to user_id."""
+    memberships = (
+        db.query(GroupMember)
+        .filter(GroupMember.group_id == group_id)
+        .all()
+    )
+    lookup: Dict[str, int] = {}
+    for m in memberships:
+        if not m.user or not m.user.is_active:
+            continue
+        if m.user.username:
+            lookup[m.user.username.strip().lower()] = m.user.id
+        if m.user.full_name and m.user.full_name.strip():
+            lookup[m.user.full_name.strip().lower()] = m.user.id
+    return lookup
+
+
+def _resolve_receiver_preferences(db: Session, pair: SecretSantaPair) -> Optional[Dict]:
+    """Find receiver's gift preferences strictly within the draw's active family group members."""
+    active_member_ids = [
+        row[0]
+        for row in db.query(GroupMember.user_id)
+        .join(User, User.id == GroupMember.user_id)
+        .filter(GroupMember.group_id == pair.draw.group_id, User.is_active == True)
+        .all()
+    ]
+    if not active_member_ids:
+        return None
+
+    target_raw: Optional[str] = None
+    if pair.receiver_user_id is not None:
+        if pair.receiver_user_id not in active_member_ids:
+            return None
+        user = db.query(User).filter(User.id == pair.receiver_user_id, User.is_active == True).first()
+        if not user:
+            return None
+        target_raw = user.gift_preferences_json
+    else:
+        name_key = pair.receiver_name.strip().lower()
+        group_users = (
+            db.query(User)
+            .filter(User.id.in_(active_member_ids), User.is_active == True)
+            .all()
+        )
+        matched_user = False
+        for u in group_users:
+            candidates = {
+                (u.username or "").strip().lower(),
+                (u.full_name or "").strip().lower(),
+            }
+            if name_key in candidates:
+                target_raw = u.gift_preferences_json
+                matched_user = True
+                break
+
+        if not matched_user:
+            group_profiles = (
+                db.query(ManagedProfile)
+                .join(User, User.id == ManagedProfile.manager_user_id)
+                .filter(ManagedProfile.manager_user_id.in_(active_member_ids), User.is_active == True)
+                .all()
+            )
+            for prof in group_profiles:
+                if (prof.name or "").strip().lower() == name_key:
+                    target_raw = prof.gift_preferences_json
+                    break
+
+    if not target_raw:
+        return None
+
+    parsed = parse_gift_preferences(target_raw)
+    if not parsed["has_preferences"]:
+        return None
+    return parsed
 
 
 @router.get("", response_model=List[DrawOut])
@@ -177,12 +263,26 @@ def create_and_run_draw(
 ):
     participants = _clean_participants(payload.participants)
 
-    # Determine target group
-    user_group_ids = {m.group_id for m in user.group_memberships}
-    if payload.group_id and (payload.group_id in user_group_ids or user.is_superuser):
-        group_id = payload.group_id
-    elif user.group_memberships:
-        group_id = user.group_memberships[0].group_id
+    # Determine target group (must be owner/admin of target group, or superuser)
+    admin_group_ids = {
+        m.group_id
+        for m in user.group_memberships
+        if m.role in ("owner", "admin")
+    }
+    if payload.group_id is not None:
+        if user.is_superuser:
+            target_group = db.query(FamilyGroup).filter(FamilyGroup.id == payload.group_id).first()
+            if not target_group:
+                raise HTTPException(status_code=404, detail="Family group not found.")
+            group_id = target_group.id
+        elif payload.group_id in admin_group_ids:
+            group_id = payload.group_id
+        else:
+            raise HTTPException(status_code=403, detail="Group admin privileges required.")
+    elif admin_group_ids:
+        group_id = next(
+            m.group_id for m in user.group_memberships if m.role in ("owner", "admin")
+        )
     else:
         group = FamilyGroup(
             name=f"{user.full_name or user.username}'s Family",
@@ -215,13 +315,16 @@ def create_and_run_draw(
     db.commit()
     db.refresh(draw)
 
+    user_lookup = _build_group_user_lookup(db, group_id)
     created_pairs = []
     for giver, receiver in pairs:
         token = secrets.token_urlsafe(20)
         p = SecretSantaPair(
             draw_id=draw.id,
             giver_name=giver["name"],
+            giver_user_id=user_lookup.get(giver["name"].strip().lower()),
             receiver_name=receiver["name"],
+            receiver_user_id=user_lookup.get(receiver["name"].strip().lower()),
             view_token=token,
         )
         db.add(p)
@@ -242,8 +345,9 @@ def update_and_run_draw(
     db: Session = Depends(get_db),
 ):
     draw = db.query(SecretSantaDraw).filter(SecretSantaDraw.id == draw_id).first()
-    if not draw or not _user_can_access_draw(user, draw):
+    if not draw:
         raise HTTPException(status_code=404, detail="Secret Santa draw not found.")
+    _require_draw_admin(user, draw)
 
     participants = _clean_participants(payload.participants)
     participant_dicts = [{"id": name, "name": name} for name in participants]
@@ -261,13 +365,16 @@ def update_and_run_draw(
     db.query(SecretSantaPair).filter(SecretSantaPair.draw_id == draw.id).delete()
     db.flush()
 
+    user_lookup = _build_group_user_lookup(db, draw.group_id)
     for giver, receiver in pairs:
         token = secrets.token_urlsafe(20)
         db.add(
             SecretSantaPair(
                 draw_id=draw.id,
                 giver_name=giver["name"],
+                giver_user_id=user_lookup.get(giver["name"].strip().lower()),
                 receiver_name=receiver["name"],
+                receiver_user_id=user_lookup.get(receiver["name"].strip().lower()),
                 view_token=token,
             )
         )
@@ -286,8 +393,9 @@ def redraw_secret_santa(
     db: Session = Depends(get_db),
 ):
     draw = db.query(SecretSantaDraw).filter(SecretSantaDraw.id == draw_id).first()
-    if not draw or not _user_can_access_draw(user, draw):
+    if not draw:
         raise HTTPException(status_code=404, detail="Secret Santa draw not found.")
+    _require_draw_admin(user, draw)
 
     participants = [p.giver_name for p in draw.pairs]
     exclusions = _parse_exclusions(draw.exclusions_json)
@@ -300,13 +408,16 @@ def redraw_secret_santa(
     db.query(SecretSantaPair).filter(SecretSantaPair.draw_id == draw.id).delete()
     db.flush()
 
+    user_lookup = _build_group_user_lookup(db, draw.group_id)
     for giver, receiver in pairs:
         token = secrets.token_urlsafe(20)
         db.add(
             SecretSantaPair(
                 draw_id=draw.id,
                 giver_name=giver["name"],
+                giver_user_id=user_lookup.get(giver["name"].strip().lower()),
                 receiver_name=receiver["name"],
+                receiver_user_id=user_lookup.get(receiver["name"].strip().lower()),
                 view_token=token,
             )
         )
@@ -324,8 +435,9 @@ def delete_draw(
     db: Session = Depends(get_db),
 ):
     draw = db.query(SecretSantaDraw).filter(SecretSantaDraw.id == draw_id).first()
-    if not draw or not _user_can_access_draw(user, draw):
+    if not draw:
         raise HTTPException(status_code=404, detail="Secret Santa draw not found.")
+    _require_draw_admin(user, draw)
 
     db.delete(draw)
     db.commit()
@@ -351,4 +463,5 @@ def reveal_secret_santa(token: str, db: Session = Depends(get_db)):
         "rules_notes": pair.draw.rules_notes,
         "giver_name": pair.giver_name,
         "receiver_name": pair.receiver_name,
+        "receiver_preferences": _resolve_receiver_preferences(db, pair),
     }

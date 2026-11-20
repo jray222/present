@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Plus, Share2, ChevronRight,
-  Pencil, Trash2
+  Pencil, Trash2, Heart
 } from 'lucide-react';
 import {
   getMyWishlists, getManagedProfiles, createWishlist, updateWishlist,
@@ -158,14 +158,24 @@ export default function ListsPage() {
         title={currentTabName}
         subtitle="Manage wishlists for yourself and your family"
         actions={
-          <button
-            type="button"
-            onClick={() => setCreateListOpen(true)}
-            className="btn-primary"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Wishlist</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/preferences')}
+              className="btn-soft text-xs py-2.5 px-3.5 font-bold flex items-center gap-1.5"
+            >
+              <Heart className="w-4 h-4 text-tomato-600" />
+              <span>Gift Preferences</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setCreateListOpen(true)}
+              className="btn-primary"
+            >
+              <Plus className="w-4 h-4" />
+              <span>New Wishlist</span>
+            </button>
+          </div>
         }
       />
 

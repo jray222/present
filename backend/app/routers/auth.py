@@ -8,7 +8,7 @@ from app.schemas import (
     ChangePasswordRequest
 )
 from app.security import (
-    hash_password, verify_password, create_access_token,
+    hash_password, verify_password, create_access_token, create_2fa_challenge_token,
     generate_refresh_token, hash_token, decrypt_secret
 )
 from app.deps import get_current_user, get_client_ip
@@ -37,7 +37,7 @@ def _user_to_out(user: User) -> UserOut:
     )
 
 def _issue_tokens(user: User, db: Session, response: Response, request: Request) -> TokenResponse:
-    access_token = create_access_token(user.id)
+    access_token = create_access_token(user.id, token_version=user.token_version or 0)
     raw_refresh, token_hash = generate_refresh_token()
 
     from datetime import datetime, timedelta, timezone
@@ -120,9 +120,12 @@ def login(payload: LoginRequest, response: Response, request: Request, db: Sessi
     if not user or not user.password_hash or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid username or password.")
 
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail="User account inactive.")
+
     if user.totp_enabled:
-        # Require 2FA verification step
-        temp_token = create_access_token(user.id)
+        # Require 2FA verification step with a dedicated short-lived challenge token
+        temp_token = create_2fa_challenge_token(user.id, token_version=user.token_version or 0)
         raise HTTPException(
             status_code=403,
             detail={"mfa_required": True, "temp_token": temp_token}
@@ -138,12 +141,14 @@ def login(payload: LoginRequest, response: Response, request: Request, db: Sessi
 def verify_2fa(payload: TwoFactorVerifyRequest, response: Response, request: Request, db: Session = Depends(get_db)):
     from app.security import decode_token
     token_data = decode_token(payload.temp_token)
-    if not token_data:
+    if not token_data or token_data.get("type") != "2fa_challenge":
         raise HTTPException(status_code=401, detail="Session expired.")
 
-    user = db.query(User).filter(User.id == int(token_data["sub"])).first()
+    user = db.query(User).filter(User.id == int(token_data["sub"]), User.is_active == True).first()
     if not user or not user.totp_enabled:
         raise HTTPException(status_code=400, detail="Invalid 2FA state.")
+    if int(token_data.get("tv", 0)) != int(user.token_version or 0):
+        raise HTTPException(status_code=401, detail="Session expired.")
 
     secret = decrypt_secret(user.totp_secret_encrypted)
     totp = pyotp.TOTP(secret)
@@ -233,6 +238,8 @@ def get_me(user: User = Depends(get_current_user)):
 @router.post("/change-password")
 def change_password(
     payload: ChangePasswordRequest,
+    request: Request,
+    response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -248,5 +255,13 @@ def change_password(
     from datetime import datetime, timezone
     user.password_hash = hash_password(payload.new_password)
     user.password_changed_at = datetime.now(timezone.utc)
+    user.token_version = (user.token_version or 0) + 1
+    db.query(RefreshToken).filter(
+        RefreshToken.user_id == user.id,
+        RefreshToken.revoked == False,
+    ).update({"revoked": True})
     db.commit()
-    return {"status": "password_changed"}
+    db.refresh(user)
+
+    fresh = _issue_tokens(user, db, response, request)
+    return {"status": "password_changed", "access_token": fresh.access_token}

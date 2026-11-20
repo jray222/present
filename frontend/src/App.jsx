@@ -5,6 +5,7 @@ import Shell from './components/Shell';
 import AuthGateway from './components/AuthGateway';
 import ListsPage from './pages/ListsPage';
 import ListDetailPage from './pages/ListDetailPage';
+import PreferencesPage from './pages/PreferencesPage';
 import FamilyPage from './pages/FamilyPage';
 import SecretSantaPage from './pages/SecretSantaPage';
 import SantaRevealPage from './pages/SantaRevealPage';
@@ -46,6 +47,8 @@ export default function App() {
 
   if ((params = matchPath('/lists/:id', path))) {
     content = <ListDetailPage wishlistId={parseInt(params.id, 10)} />;
+  } else if (path === '/preferences') {
+    content = <PreferencesPage />;
   } else if (path === '/family') {
     content = <FamilyPage />;
   } else if (path === '/join') {
