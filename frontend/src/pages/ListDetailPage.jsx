@@ -502,7 +502,10 @@ export default function ListDetailPage({ wishlistId }) {
       {/* Modals */}
       <ItemFormModal
         open={itemModalOpen}
-        onClose={() => setItemModalOpen(false)}
+        onClose={() => {
+          setItemModalOpen(false);
+          setEditingItem(null);
+        }}
         editingItem={editingItem}
         onSaveItem={handleSaveItem}
       />

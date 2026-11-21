@@ -1,7 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Loader2, Check } from 'lucide-react';
 import Modal, { Field } from '../Modal';
 import { scrapeUrl } from '../../api';
+
+function getInitialFormState(item) {
+  return {
+    title: item?.title || '',
+    url: item?.url || '',
+    price: item?.price !== null && item?.price !== undefined ? item.price.toString() : '',
+    description: item?.description || '',
+    imageUrl: item?.image_url || '',
+    priority: item?.priority || 1,
+  };
+}
 
 export default function ItemFormModal({
   open,
@@ -9,38 +20,83 @@ export default function ItemFormModal({
   editingItem,
   onSaveItem,
 }) {
+  // Unmount the form content whenever the dialog closes so prior add/edit inputs
+  // and async autofill state never bleed into the next opened dialog.
+  if (!open) return null;
+
+  return (
+    <ItemFormModalContent
+      key={editingItem ? `edit-${editingItem.id ?? 'item'}` : 'new'}
+      onClose={onClose}
+      editingItem={editingItem}
+      onSaveItem={onSaveItem}
+    />
+  );
+}
+
+function ItemFormModalContent({
+  onClose,
+  editingItem,
+  onSaveItem,
+}) {
+  const initial = getInitialFormState(editingItem);
   const [prevItem, setPrevItem] = useState(editingItem);
-  const [title, setTitle] = useState(editingItem?.title || '');
-  const [url, setUrl] = useState(editingItem?.url || '');
-  const [price, setPrice] = useState(editingItem?.price ? editingItem.price.toString() : '');
-  const [description, setDescription] = useState(editingItem?.description || '');
-  const [imageUrl, setImageUrl] = useState(editingItem?.image_url || '');
-  const [priority, setPriority] = useState(editingItem?.priority || 1);
+  const [title, setTitle] = useState(initial.title);
+  const [url, setUrl] = useState(initial.url);
+  const [price, setPrice] = useState(initial.price);
+  const [description, setDescription] = useState(initial.description);
+  const [imageUrl, setImageUrl] = useState(initial.imageUrl);
+  const [priority, setPriority] = useState(initial.priority);
   const [scraping, setScraping] = useState(false);
   const [scrapeSuccess, setScrapeSuccess] = useState(null);
 
+  const isMountedRef = useRef(true);
+  const scrapeTimerRef = useRef(null);
+  const scrapeRequestIdRef = useRef(0);
+  const lastPastedUrlRef = useRef(null);
+
+  const clearPendingScrapeTimer = () => {
+    if (scrapeTimerRef.current) {
+      clearTimeout(scrapeTimerRef.current);
+      scrapeTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      scrapeRequestIdRef.current += 1;
+      clearPendingScrapeTimer();
+    };
+  }, [editingItem]);
+
   if (editingItem !== prevItem) {
+    const next = getInitialFormState(editingItem);
     setPrevItem(editingItem);
-    setTitle(editingItem?.title || '');
-    setUrl(editingItem?.url || '');
-    setPrice(editingItem?.price ? editingItem.price.toString() : '');
-    setDescription(editingItem?.description || '');
-    setImageUrl(editingItem?.image_url || '');
-    setPriority(editingItem?.priority || 1);
+    setTitle(next.title);
+    setUrl(next.url);
+    setPrice(next.price);
+    setDescription(next.description);
+    setImageUrl(next.imageUrl);
+    setPriority(next.priority);
+    setScraping(false);
     setScrapeSuccess(null);
   }
 
   const handleAutoScrape = async (targetUrl = url) => {
     const clean = targetUrl.trim();
     if (!clean || (!clean.startsWith('http://') && !clean.startsWith('https://'))) return;
+    const requestId = ++scrapeRequestIdRef.current;
     setScraping(true);
     setScrapeSuccess(null);
     try {
       const data = await scrapeUrl(clean);
-      if (data.title && !title) setTitle(data.title);
+      if (!isMountedRef.current || requestId !== scrapeRequestIdRef.current) return;
+      if (data.title) setTitle((prev) => prev || data.title);
       if (data.price !== null && data.price !== undefined) setPrice(data.price.toString());
       if (data.image_url) setImageUrl(data.image_url);
-      if (data.description && !description) setDescription(data.description);
+      if (data.description) setDescription((prev) => prev || data.description);
       if (data.clean_url) setUrl(data.clean_url);
 
       const itemsFound = [];
@@ -52,9 +108,13 @@ export default function ItemFormModal({
         setScrapeSuccess(`Autofilled product ${itemsFound.join(', ')}!`);
       }
     } catch (err) {
-      console.warn('Scrape failed:', err);
+      if (isMountedRef.current && requestId === scrapeRequestIdRef.current) {
+        console.warn('Scrape failed:', err);
+      }
     } finally {
-      setScraping(false);
+      if (isMountedRef.current && requestId === scrapeRequestIdRef.current) {
+        setScraping(false);
+      }
     }
   };
 
@@ -73,7 +133,7 @@ export default function ItemFormModal({
 
   return (
     <Modal
-      open={open}
+      open
       onClose={onClose}
       title={editingItem ? 'Edit Gift Idea' : 'Add Gift Idea'}
     >
@@ -91,14 +151,26 @@ export default function ItemFormModal({
               onPaste={(e) => {
                 const text = e.clipboardData.getData('text');
                 if (text && (text.startsWith('http://') || text.startsWith('https://'))) {
+                  clearPendingScrapeTimer();
+                  lastPastedUrlRef.current = text;
                   setUrl(text);
                   handleAutoScrape(text);
                 }
               }}
               onChange={(e) => {
-                setUrl(e.target.value);
-                if (e.target.value.startsWith('http://') || e.target.value.startsWith('https://')) {
-                  setTimeout(() => handleAutoScrape(e.target.value), 250);
+                const nextUrl = e.target.value;
+                setUrl(nextUrl);
+                clearPendingScrapeTimer();
+                if (lastPastedUrlRef.current && lastPastedUrlRef.current === nextUrl) {
+                  lastPastedUrlRef.current = null;
+                  return;
+                }
+                lastPastedUrlRef.current = null;
+                if (nextUrl.startsWith('http://') || nextUrl.startsWith('https://')) {
+                  scrapeTimerRef.current = setTimeout(() => {
+                    scrapeTimerRef.current = null;
+                    handleAutoScrape(nextUrl);
+                  }, 250);
                 }
               }}
               placeholder="https://amazon.com/dp/..."
